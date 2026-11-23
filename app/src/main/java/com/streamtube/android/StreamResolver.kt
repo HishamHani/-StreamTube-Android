@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit
 
 data class HlsVariant(val url:String,val width:Int,val height:Int,val fps:Int,val bitrate:Long,val label:String)
 data class HlsAudioTrack(val name:String,val language:String,val isDefault:Boolean)
-data class DownloadFormat(val label:String,val url:String,val mimeType:String,val extension:String,val height:Int=0,val audioOnly:Boolean=false)
+data class DownloadFormat(val label:String,val url:String,val mimeType:String,val extension:String,val height:Int=0,val audioOnly:Boolean=false,val userAgent:String="",val visitorData:String="")
 data class ResolvedStream(
     val hlsUrl:String,
     val userAgent:String,
@@ -87,7 +87,7 @@ object StreamResolver {
                     else->if(audio)"webm" else "mp4"
                 }
                 val label=if(audio)"Audio only · $ext" else "$quality · $ext"
-                result+=DownloadFormat(label,url,mime,ext,height,audio)
+                result+=DownloadFormat(label,url,mime,ext,height,audio,VR_UA,visitor)
             }
         }
         read(streaming.optJSONArray("formats"))
