@@ -32,6 +32,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.launch
@@ -290,6 +291,10 @@ private fun VideoRow(video: Video, onClick: (Video) -> Unit) {
 private fun VideoPlayer(video: Video, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     var streamUrl by remember(video.id) { mutableStateOf<String?>(null) }
+    var streamMimeType by remember(video.id) { mutableStateOf(MimeTypes.APPLICATION_M3U8) }
+    var streamSource by remember(video.id) { mutableStateOf("") }
+    var qualityMenu by remember { mutableStateOf(false) }
+    var maxQuality by remember { mutableIntStateOf(AppPreferences.load(context).defaultQuality) }
     var streamError by remember(video.id) { mutableStateOf<String?>(null) }
     var resolving by remember(video.id) { mutableStateOf(true) }
     var retryCount by remember(video.id) { mutableIntStateOf(0) }
@@ -299,11 +304,16 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier) {
     var dislikeVotes by remember(video.id) { mutableStateOf<DislikeVotes?>(null) }
     val skippedSegments = remember(video.id) { mutableSetOf<String>() }
 
+    val trackSelector = remember(video.id) {
+        DefaultTrackSelector(context).apply { setParameters(buildUponParameters().setMaxVideoSize(Int.MAX_VALUE, maxQuality)) }
+    }
+
     val player = remember(video.id) {
         val httpFactory = DefaultHttpDataSource.Factory()
             .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36")
             .setAllowCrossProtocolRedirects(true)
         ExoPlayer.Builder(context)
+            .setTrackSelector(trackSelector)
             .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))
             .build()
     }
@@ -315,6 +325,8 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier) {
         try {
             val stream = StreamResolver.resolve(video.id)
             streamUrl = stream.hlsUrl
+            streamMimeType = stream.mimeType
+            streamSource = stream.source
             if (preferences.sponsorBlock) launch { sponsorSegments = runCatching { YouTubeServices.sponsorSegments(video.id) }.getOrDefault(emptyList()) }
             if (preferences.deArrowTitles) launch { val branding = YouTubeServices.deArrow(video.id); if (!branding?.title.isNullOrBlank()) displayTitle = branding!!.title!! }
             if (preferences.returnDislike) launch { dislikeVotes = YouTubeServices.returnDislike(video.id) }
@@ -327,7 +339,7 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier) {
 
     LaunchedEffect(streamUrl) {
         val url = streamUrl ?: return@LaunchedEffect
-        player.setMediaItem(MediaItem.Builder().setUri(url).setMimeType(MimeTypes.APPLICATION_M3U8).build())
+        player.setMediaItem(MediaItem.Builder().setUri(url).setMimeType(streamMimeType).build())
         player.prepare()
         player.playWhenReady = true
     }
@@ -363,6 +375,22 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(displayTitle, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text(video.channel, color = Color.LightGray)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Quality", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                Box {
+                    TextButton(onClick = { qualityMenu = true }) { Text("${maxQuality}p ▾") }
+                    DropdownMenu(expanded = qualityMenu, onDismissRequest = { qualityMenu = false }) {
+                        listOf(2160, 1440, 1080, 720, 480, 360).forEach { q ->
+                            DropdownMenuItem(text = { Text("${q}p") }, onClick = {
+                                maxQuality = q
+                                trackSelector.setParameters(trackSelector.buildUponParameters().setMaxVideoSize(Int.MAX_VALUE, q))
+                                qualityMenu = false
+                            })
+                        }
+                    }
+                }
+                Text("Source: $streamSource", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
+            }
             dislikeVotes?.let { votes ->
                 Text("👍 ${votes.likes}    👎 ${votes.dislikes}", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
             }
