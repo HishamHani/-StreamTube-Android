@@ -90,6 +90,24 @@ object YouTubeApi{
         }
     }
 
+
+    suspend fun signedInHome(context:android.content.Context):SearchPage=withContext(Dispatchers.IO){
+        parsePage(YouTubeAuth.tvCall(context,"browse",JSONObject().put("browseId","FEwhat_to_watch")))
+    }
+
+    suspend fun signedInSubscriptions(context:android.content.Context):SearchPage=withContext(Dispatchers.IO){
+        parsePage(YouTubeAuth.tvCall(context,"browse",JSONObject().put("browseId","FEsubscriptions")))
+    }
+
+    suspend fun likeVideo(context:android.content.Context,videoId:String,kind:String)=withContext(Dispatchers.IO){
+        YouTubeAuth.tvCall(context,"like/$kind",JSONObject().put("target",JSONObject().put("videoId",videoId)))
+    }
+
+    suspend fun subscribeChannel(context:android.content.Context,channelId:String,subscribe:Boolean)=withContext(Dispatchers.IO){
+        val endpoint=if(subscribe)"subscription/subscribe" else "subscription/unsubscribe"
+        YouTubeAuth.tvCall(context,endpoint,JSONObject().put("channelIds",JSONArray().put(channelId)))
+    }
+
     private fun webContext()=JSONObject().put("client",JSONObject()
         .put("clientName","WEB").put("clientVersion",CLIENT_VERSION).put("hl","en").put("gl","US"))
 
@@ -104,7 +122,7 @@ object YouTubeApi{
         }
     }
 
-    private fun parsePage(root:JSONObject):SearchPage{
+    fun parsePage(root:JSONObject):SearchPage{
         val videos=mutableListOf<Video>()
         var continuation:String?=null
         fun walk(value:Any?){
