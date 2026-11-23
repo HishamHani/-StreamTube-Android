@@ -116,7 +116,7 @@ object YouTubeApi{
             .header("User-Agent",browserUa()).header("Origin","https://www.youtube.com")
             .header("X-YouTube-Client-Name","1").header("X-YouTube-Client-Version",CLIENT_VERSION)
             .post(body.toString().toRequestBody("application/json; charset=utf-8".toMediaType())).build()
-        client.newCall(request).execute().use{res->
+        return client.newCall(request).execute().use{res->
             if(!res.isSuccessful)error("YouTube HTTP ${res.code}")
             JSONObject(res.body?.string()?:error("Empty YouTube response"))
         }
