@@ -12,6 +12,7 @@ import java.util.concurrent.TimeUnit
 
 data class HlsVariant(val url:String,val width:Int,val height:Int,val fps:Int,val bitrate:Long,val label:String)
 data class HlsAudioTrack(val name:String,val language:String,val isDefault:Boolean)
+data class DownloadFormat(val label:String,val url:String,val mimeType:String,val extension:String,val height:Int=0,val audioOnly:Boolean=false)
 data class ResolvedStream(
     val hlsUrl:String,
     val userAgent:String,
@@ -55,6 +56,46 @@ object StreamResolver {
     }
 
     fun clearCache(){cache.clear()}
+
+    suspend fun downloadFormats(videoId:String):List<DownloadFormat> = withContext(Dispatchers.IO){
+        val visitor=fetchVisitorData().orEmpty()
+        val client=JSONObject().put("clientName","ANDROID_VR").put("clientVersion",VR_VERSION)
+            .put("deviceMake","Oculus").put("deviceModel","Quest 3").put("androidSdkVersion",32)
+            .put("osName","Android").put("osVersion","12L").put("hl","en").put("gl","US")
+            .put("userAgent",VR_UA).put("visitorData",visitor)
+        val json=playerRequest(videoId,client,"28",VR_VERSION,VR_UA,visitor)
+        val streaming=json.optJSONObject("streamingData")?:error("YouTube did not provide downloadable formats")
+        val result=mutableListOf<DownloadFormat>()
+        fun read(array:org.json.JSONArray?){
+            if(array==null)return
+            for(i in 0 until array.length()){
+                val item=array.optJSONObject(i)?:continue
+                val url=item.optString("url").takeIf{it.startsWith("https://")}?:continue
+                val mime=item.optString("mimeType").substringBefore(";")
+                val audio=mime.startsWith("audio/")
+                val video=mime.startsWith("video/")
+                if(!audio&&!video)continue
+                val height=item.optInt("height",0)
+                val quality=item.optString("qualityLabel").ifBlank{
+                    when{height>=2160->"2160p";height>=1440->"1440p";height>=1080->"1080p";height>=720->"720p";height>=480->"480p";height>0->"${height}p";audio->"Audio only";else->"Video"}
+                }
+                val ext=when{
+                    mime.contains("mp4")->"mp4"
+                    mime.contains("webm")->"webm"
+                    mime.contains("3gpp")->"3gp"
+                    mime.contains("mp4a")||mime.contains("aac")->"m4a"
+                    else->if(audio)"webm" else "mp4"
+                }
+                val label=if(audio)"Audio only · $ext" else "$quality · $ext"
+                result+=DownloadFormat(label,url,mime,ext,height,audio)
+            }
+        }
+        read(streaming.optJSONArray("formats"))
+        read(streaming.optJSONArray("adaptiveFormats"))
+        result.distinctBy{it.url}.sortedWith(compareBy<DownloadFormat>{it.audioOnly}.thenByDescending{it.height})
+    }
+
+
 
     private fun fetchVisitorData():String?{
         visitorData?.let{return it}
