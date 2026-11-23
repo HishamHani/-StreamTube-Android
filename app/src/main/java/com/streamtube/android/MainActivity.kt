@@ -473,7 +473,7 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier) {
 
 
 @Composable
-private fun SubscriptionsScreen(modifier: Modifier, onVideo: (Video) -> Unit) {
+private fun SubscriptionsScreen(modifier: Modifier, signedIn: Boolean, onVideo: (Video) -> Unit) {
     val context = LocalContext.current
     var videos by remember { mutableStateOf<List<Video>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
@@ -482,7 +482,7 @@ private fun SubscriptionsScreen(modifier: Modifier, onVideo: (Video) -> Unit) {
     LaunchedEffect(refresh) {
         loading = true
         error = null
-        try { videos = YouTubeApi.signedInSubscriptions(context).videos }
+        try { videos = if (signedIn) YouTubeApi.signedInSubscriptions(context).videos else YouTubeApi.localSubscriptions(context) }
         catch (t: Throwable) { error = t.message ?: "Could not load subscriptions" }
         finally { loading = false }
     }
@@ -499,7 +499,7 @@ private fun SubscriptionsScreen(modifier: Modifier, onVideo: (Video) -> Unit) {
                 Button(onClick = { refresh++ }) { Text("Try again") }
             }
             videos.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No subscription videos found.", color = Color.Gray)
+                Text(if (signedIn) "No subscription videos found." else "No local subscriptions yet. Open a video and tap Subscribe.", color = Color.Gray)
             }
             else -> LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(videos) { VideoRow(it, onVideo) }
