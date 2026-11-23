@@ -1,6 +1,7 @@
 package com.streamtube.android
 
 import android.annotation.SuppressLint
+import android.view.View
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -30,6 +31,9 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Fullscreen
+import androidx.compose.material.icons.rounded.FullscreenExit
+import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.rounded.Subscriptions
 import androidx.compose.material.icons.rounded.VideoLibrary
 import androidx.compose.material.icons.rounded.Home
@@ -94,6 +98,8 @@ private fun StreamTubeApp() {
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var selected by remember { mutableStateOf<Video?>(null) }
+    var playerFullscreen by remember { mutableStateOf(false) }
+    BackHandler(enabled = playerFullscreen) { playerFullscreen = false }
     var signedIn by remember { mutableStateOf(YouTubeAuth.isSignedIn(context)) }
     var accountName by remember { mutableStateOf(YouTubeAuth.account(context).name) }
     var preferences by remember { mutableStateOf(AppPreferences.load(context)) }
@@ -127,7 +133,7 @@ private fun StreamTubeApp() {
     Scaffold(
         containerColor = AppBlack,
         topBar = {
-            TopAppBar(
+            if (selected == null || !playerFullscreen) TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(32.dp).background(AppGold, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
@@ -172,7 +178,7 @@ private fun StreamTubeApp() {
         }
     ) { padding ->
         if (selected != null) {
-            VideoPlayer(selected!!, Modifier.padding(padding), onVideo = ::openVideo)
+            VideoPlayer(selected!!, Modifier.padding(if (playerFullscreen) PaddingValues(0.dp) else padding), onVideo = ::openVideo, fullscreen = playerFullscreen, onFullscreenChange = { playerFullscreen = it })
         } else when (tab) {
             Tab.Home -> HomeScreen(
                 modifier = Modifier.padding(padding),
@@ -362,7 +368,7 @@ private fun VideoRow(video: Video, onClick: (Video) -> Unit) {
 }
 
 @Composable
-private fun VideoPlayer(video: Video, modifier: Modifier = Modifier, onVideo: (Video) -> Unit) {
+private fun VideoPlayer(video: Video, modifier: Modifier = Modifier, onVideo: (Video) -> Unit, fullscreen: Boolean, onFullscreenChange: (Boolean) -> Unit) {
     val context = LocalContext.current
     var streamUrl by remember(video.id) { mutableStateOf<String?>(null) }
     var streamMimeType by remember(video.id) { mutableStateOf(MimeTypes.APPLICATION_M3U8) }
@@ -462,16 +468,48 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier, onVideo: (V
         onDispose { player.release() }
     }
 
+    val view = androidx.compose.ui.platform.LocalView.current
+    DisposableEffect(fullscreen) {
+        val decor = view
+        val previous = decor.systemUiVisibility
+        decor.systemUiVisibility = if (fullscreen) (
+            View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+        ) else View.SYSTEM_UI_FLAG_VISIBLE
+        onDispose { decor.systemUiVisibility = previous }
+    }
+    if (fullscreen) {
+        Box(Modifier.fillMaxSize().background(Color.Black)) {
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { ctx -> PlayerView(ctx).apply {
+                    this.player = player
+                    useController = true
+                    setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
+                } },
+                update = { it.player = player }
+            )
+            IconButton(onClick = { onFullscreenChange(false) },
+                modifier = Modifier.align(Alignment.TopEnd).padding(12.dp).background(Color.Black.copy(alpha = 0.55f), CircleShape)
+            ) { Icon(Icons.Rounded.FullscreenExit, contentDescription = "Exit fullscreen", tint = AppGold) }
+        }
+    } else {
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        AndroidView(
-            modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f),
-            factory = { ctx -> PlayerView(ctx).apply {
-                this.player = player
-                useController = true
-                setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
-            } },
-            update = { it.player = player }
-        )
+        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { ctx -> PlayerView(ctx).apply {
+                    this.player = player
+                    useController = true
+                    setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
+                } },
+                update = { it.player = player }
+            )
+            IconButton(onClick = { onFullscreenChange(true) },
+                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).background(Color.Black.copy(alpha = 0.55f), CircleShape)
+            ) { Icon(Icons.Rounded.Fullscreen, contentDescription = "Fullscreen", tint = AppGold) }
+        }
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(displayTitle, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text(video.channel, color = Color.LightGray)
@@ -599,6 +637,7 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier, onVideo: (V
                 }) { Text("Open in YouTube") }
             }
         }
+    }
     }
 
         if (downloadDialog) {
