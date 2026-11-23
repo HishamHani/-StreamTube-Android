@@ -281,12 +281,33 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier) {
                 WebView(context).apply {
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
-                    settings.mediaPlaybackRequiresUserGesture = true
+                    settings.mediaPlaybackRequiresUserGesture = false
+                    settings.useWideViewPort = true
+                    settings.loadWithOverviewMode = true
+                    settings.javaScriptCanOpenWindowsAutomatically = true
+                    android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                     webChromeClient = WebChromeClient()
                     webViewClient = WebViewClient()
-                    loadDataWithBaseURL("https://www.youtube.com",
-                        "<!doctype html><html><body style='margin:0;background:#000'><iframe width='100%' height='100%' src='https://www.youtube.com/embed/${video.id}?playsinline=1&autoplay=1' title='YouTube video player' frameborder='0' allow='accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share' allowfullscreen></iframe></body></html>",
-                        "text/html", "UTF-8", null)
+                    val html = """
+                        <!doctype html>
+                        <html>
+                          <head>
+                            <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+                            <style>html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden}
+                            iframe{border:0;width:100%;height:100%}</style>
+                          </head>
+                          <body>
+                            <iframe
+                              src="https://www.youtube.com/embed/${video.id}?playsinline=1&autoplay=0&controls=1&rel=0&enablejsapi=1&origin=https%3A%2F%2Fwww.youtube.com"
+                              title="YouTube video player"
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                              referrerpolicy="strict-origin-when-cross-origin"
+                              allowfullscreen>
+                            </iframe>
+                          </body>
+                        </html>
+                    """.trimIndent()
+                    loadDataWithBaseURL("https://www.youtube.com/", html, "text/html", "UTF-8", null)
                 }
             },
             update = { }
@@ -294,8 +315,13 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(video.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text(video.channel, color = Color.LightGray)
-            Text("Playback uses YouTube's embedded player. Some videos may restrict embedded playback.",
+            Text("If YouTube blocks this embed, use the YouTube app/browser to watch this video.",
                 color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+            OutlinedButton(onClick = {
+                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW,
+                    android.net.Uri.parse(video.watchUrl))
+                context.startActivity(intent)
+            }) { Text("Watch in YouTube") }
         }
     }
 }
