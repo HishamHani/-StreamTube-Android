@@ -66,7 +66,7 @@ object YouTubeServices {
    }
    DeArrowBranding(title,time)
   }}.getOrNull()
-  brandingCache[videoId]=result
+  if(result!=null)brandingCache[videoId]=result
   result
  }
 
