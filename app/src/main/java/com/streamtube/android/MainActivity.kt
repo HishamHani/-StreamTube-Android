@@ -328,6 +328,10 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier) {
     var streamSource by remember(video.id) { mutableStateOf("") }
     var qualityMenu by remember { mutableStateOf(false) }
     var maxQuality by remember { mutableIntStateOf(AppPreferences.load(context).defaultQuality) }
+    var savedLater by remember(video.id) { mutableStateOf(LocalLibrary.isWatchLater(context, video.id)) }
+    var subscribed by remember(video.channelId) { mutableStateOf(video.channelId?.let { LocalLibrary.isSubscribed(context, it) } ?: false) }
+    var actionMessage by remember { mutableStateOf<String?>(null) }
+    val actionScope = rememberCoroutineScope()
     var streamError by remember(video.id) { mutableStateOf<String?>(null) }
     var resolving by remember(video.id) { mutableStateOf(true) }
     var retryCount by remember(video.id) { mutableIntStateOf(0) }
