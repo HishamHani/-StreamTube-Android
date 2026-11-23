@@ -400,6 +400,29 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(displayTitle, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text(video.channel, color = Color.LightGray)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(onClick = {
+                    if (savedLater) LocalLibrary.removeWatchLater(context, video.id)
+                    else LocalLibrary.addWatchLater(context, video)
+                    savedLater = !savedLater
+                    actionMessage = if (savedLater) "Added to Watch Later" else "Removed from Watch Later"
+                }) { Text(if (savedLater) "Saved" else "Watch Later") }
+                if (!video.channelId.isNullOrBlank()) {
+                    OutlinedButton(onClick = {
+                        val channelId = video.channelId
+                        actionScope.launch {
+                            try {
+                                if (YouTubeAuth.isSignedIn(context)) YouTubeApi.subscribeChannel(context, channelId, !subscribed)
+                                if (subscribed) LocalLibrary.unsubscribe(context, channelId)
+                                else LocalLibrary.subscribe(context, channelId, video.channel)
+                                subscribed = !subscribed
+                                actionMessage = if (subscribed) "Subscribed to channel" else "Unsubscribed"
+                            } catch (t: Throwable) { actionMessage = t.message ?: "Subscription failed" }
+                        }
+                    }) { Text(if (subscribed) "Subscribed" else "Subscribe") }
+                }
+            }
+            actionMessage?.let { Text(it, color = Color.Gray, style = MaterialTheme.typography.bodySmall) }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Quality", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
                 Box {
