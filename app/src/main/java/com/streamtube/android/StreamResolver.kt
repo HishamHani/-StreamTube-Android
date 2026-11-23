@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit
 
 data class HlsVariant(val url:String,val width:Int,val height:Int,val fps:Int,val bitrate:Long,val label:String)
 data class HlsAudioTrack(val name:String,val language:String,val isDefault:Boolean)
-data class DownloadFormat(val label:String,val url:String,val mimeType:String,val extension:String,val height:Int=0,val audioOnly:Boolean=false,val userAgent:String="",val visitorData:String="")
+data class DownloadFormat(val label:String,val url:String,val mimeType:String,val extension:String,val height:Int=0,val audioOnly:Boolean=false,val userAgent:String="",val visitorData:String="",val sizeBytes:Long=0L,val videoOnly:Boolean=false)
 data class ResolvedStream(
     val hlsUrl:String,
     val userAgent:String,
@@ -80,28 +80,25 @@ object StreamResolver {
                     when{height>=2160->"2160p";height>=1440->"1440p";height>=1080->"1080p";height>=720->"720p";height>=480->"480p";height>0->"${height}p";audio->"Audio only";else->"Video"}
                 }
                 val ext=when{
-                    mime.contains("mp4")->"mp4"
+                    audio && (mime.contains("audio/mp4") || mime.contains("mp4a") || mime.contains("aac")) -> "m4a"
+                    audio && mime.contains("webm") -> "webm"
+                    audio -> "m4a"
                     mime.contains("webm")->"webm"
                     mime.contains("3gpp")->"3gp"
-                    mime.contains("audio/mp4")||mime.contains("mp4a")||mime.contains("aac")->"m4a"
-                    else->if(audio)"webm" else "mp4"
+                    else->"mp4"
                 }
-                val label=if(audio)"Audio only · $ext" else "$quality · $ext"
-                result+=DownloadFormat(label,url,mime,ext,height,audio,VR_UA,visitor)
+                val durationSeconds=json.optJSONObject("videoDetails")?.optLong("lengthSeconds",0L) ?: 0L
+                val size=item.optString("contentLength").toLongOrNull()?.takeIf{it>0}
+                    ?: if(item.optLong("bitrate")>0 && durationSeconds>0L) item.optLong("bitrate")*durationSeconds/8L else 0L
+                val videoOnly=video && !item.has("audioQuality")
+                val label=when { audio -> "Audio only · $ext"; videoOnly -> "$quality · $ext · video only"; else -> "$quality · $ext" }
+                result+=DownloadFormat(label,url,mime,ext,height,audio,VR_UA,visitor,size,videoOnly)
             }
         }
-        // Progressive formats contain both video and audio. Adaptive video-only
-        // streams are excluded until a local muxer is integrated.
+        // Include progressive streams plus every adaptive video/audio stream.
+        // Adaptive video is labelled because it requires audio muxing for complete playback.
         read(streaming.optJSONArray("formats"))
-        val adaptive=streaming.optJSONArray("adaptiveFormats")
-        if(adaptive!=null){
-            val audioItems=org.json.JSONArray()
-            for(i in 0 until adaptive.length()){
-                val item=adaptive.optJSONObject(i)?:continue
-                if(item.optString("mimeType").substringBefore(";").startsWith("audio/"))audioItems.put(item)
-            }
-            read(audioItems)
-        }
+        read(streaming.optJSONArray("adaptiveFormats"))
         result.distinctBy{it.url}.sortedWith(compareBy<DownloadFormat>{it.audioOnly}.thenByDescending{it.height})
     }
 
