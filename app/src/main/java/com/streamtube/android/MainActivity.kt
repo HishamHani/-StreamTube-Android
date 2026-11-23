@@ -169,8 +169,7 @@ private fun StreamTubeApp() {
                 },
                 onVideo = ::openVideo
             )
-            Tab.Subscriptions -> if (signedIn) SubscriptionsScreen(Modifier.padding(padding), onVideo = { selected = it })
-                else InfoScreen(Modifier.padding(padding), "Subscriptions", "Sign in from Settings to see your YouTube subscriptions.")
+            Tab.Subscriptions -> SubscriptionsScreen(Modifier.padding(padding), signedIn = signedIn, onVideo = ::openVideo)
             Tab.Downloads -> InfoScreen(Modifier.padding(padding), "Downloads",
                 "The download manager is not connected yet. It will be added after search and playback are stable.")
             Tab.Settings -> SettingsScreen(
