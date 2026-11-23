@@ -596,11 +596,11 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier, onVideo: (V
                                     actionMessage = t.message ?: "Could not start download"
                                 }
                             }, modifier = Modifier.fillMaxWidth()) {
-                                Text(format.label, modifier = Modifier.fillMaxWidth())
+                                Column(Modifier.fillMaxWidth()) { Text(format.label, color = AppRed); Text(if (format.sizeBytes > 0L) formatBytes(format.sizeBytes) else "Size unavailable", color = Color.Gray, style = MaterialTheme.typography.labelSmall) }
                             }
                         }
                         if (downloadFormats.isEmpty()) Text("No directly downloadable formats are available.", color = Color.Gray)
-                        Text("MP3 conversion is not included yet. Audio-only downloads keep YouTube's original audio format.", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                        Text("Audio files keep their actual M4A or WebM format. Adaptive video-only options do not include sound yet; complete high-quality MP4 merging is still being implemented.", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
                     }
                 },
                 confirmButton = { TextButton(onClick = { downloadDialog = false }) { Text("Close") } }
@@ -608,6 +608,15 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier, onVideo: (V
         }
 }
 
+
+private fun formatBytes(bytes: Long): String {
+    if (bytes <= 0L) return "Size unavailable"
+    val units = listOf("B", "KB", "MB", "GB")
+    var value = bytes.toDouble()
+    var index = 0
+    while (value >= 1024.0 && index < units.lastIndex) { value /= 1024.0; index++ }
+    return String.format(java.util.Locale.US, "%.1f %s", value, units[index])
+}
 
 @Composable
 private fun SubscriptionsScreen(modifier: Modifier, signedIn: Boolean, onVideo: (Video) -> Unit) {
