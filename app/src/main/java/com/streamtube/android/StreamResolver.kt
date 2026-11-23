@@ -18,7 +18,8 @@ data class ResolvedStream(
     val source:String,
     val variants:List<HlsVariant> = emptyList(),
     val audioTracks:List<HlsAudioTrack> = emptyList(),
-    val isLive:Boolean = false
+    val isLive:Boolean = false,
+    val mimeType:String = "application/x-mpegURL"
 )
 
 object StreamResolver {
@@ -121,7 +122,8 @@ object StreamResolver {
                 val url=formats.optJSONObject(i)?.optString("url").orEmpty()
                 if(url.isNotBlank()&&url.contains("mime=")) {
                     // The Android VR client may return signed direct formats. HLS remains preferred.
-                    return ResolvedStream(url,VR_UA,"Android VR direct")
+                    val mime = formats.optJSONObject(i)?.optString("mimeType").orEmpty().substringBefore(";")
+                    return ResolvedStream(url,VR_UA,"Android VR direct",mimeType=mime.ifBlank{"video/mp4"})
                 }
             }
         }
