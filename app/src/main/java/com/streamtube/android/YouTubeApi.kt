@@ -3,6 +3,8 @@ package com.streamtube.android
 import android.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import okhttp3.OkHttpClient
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
@@ -90,6 +92,48 @@ object YouTubeApi{
         }
     }
 
+
+
+    suspend fun localSubscriptions(context:android.content.Context):List<Video> = coroutineScope {
+        val channels=LocalLibrary.subscriptions(context)
+        val jobs=channels.map{(id,_,_)->async(Dispatchers.IO){fetchChannelRss(id)}}
+        jobs.flatMap{runCatching{it.await()}.getOrDefault(emptyList())}
+            .distinctBy{it.id}.sortedByDescending{it.published}
+    }
+
+    private fun fetchChannelRss(channelId:String):List<Video>{
+        val request=Request.Builder().url("https://www.youtube.com/feeds/videos.xml?channel_id=$channelId")
+            .header("User-Agent",browserUa()).build()
+        return client.newCall(request).execute().use{response->
+            if(!response.isSuccessful)error("RSS HTTP ${response.code}")
+            val parser=org.xmlpull.v1.XmlPullParserFactory.newInstance().newPullParser()
+            parser.setInput(response.body?.charStream(),"UTF-8")
+            val out=mutableListOf<Video>()
+            var inEntry=false
+            var title="";var id="";var author="";var published="";var thumbnail=""
+            var event=parser.eventType
+            while(event!=org.xmlpull.v1.XmlPullParser.END_DOCUMENT){
+                when(event){
+                    org.xmlpull.v1.XmlPullParser.START_TAG->{
+                        when(parser.name.substringAfter(':')){
+                            "entry"->{inEntry=true;title="";id="";author="";published="";thumbnail=""}
+                            "videoId"->if(inEntry)id=parser.nextText()
+                            "title"->if(inEntry&&title.isBlank())title=parser.nextText()
+                            "name"->if(inEntry&&author.isBlank())author=parser.nextText()
+                            "published"->if(inEntry)published=parser.nextText()
+                            "thumbnail"->if(inEntry)thumbnail=parser.getAttributeValue(null,"url").orEmpty()
+                        }
+                    }
+                    org.xmlpull.v1.XmlPullParser.END_TAG->if(parser.name.substringAfter(':')=="entry"&&inEntry){
+                        if(id.isNotBlank())out+=Video(id,title,author,thumbnail.ifBlank{"https://i.ytimg.com/vi/$id/hqdefault.jpg"},"",channelId,published=published)
+                        inEntry=false
+                    }
+                }
+                event=parser.next()
+            }
+            out
+        }
+    }
 
     suspend fun signedInHome(context:android.content.Context):SearchPage=withContext(Dispatchers.IO){
         parsePage(YouTubeAuth.tvCall(context,"browse",JSONObject().put("browseId","FEwhat_to_watch")))
