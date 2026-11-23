@@ -22,7 +22,7 @@ data class Video(
 
 data class SearchPage(val videos:List<Video>,val continuation:String?=null)
 data class VideoComment(val id:String,val author:String,val text:String,val likes:String,val published:String)
-data class VideoNextPage(val related:List<Video>,val comments:List<VideoComment>,val commentContinuation:String?)
+data class VideoNextPage(val related:List<Video>,val relatedContinuation:String?,val comments:List<VideoComment>,val commentContinuation:String?)
 
 data class SearchFilter(
     val sort:Int=0,val date:Int=0,val kind:Int=0,val duration:Int=0,
@@ -107,7 +107,7 @@ object YouTubeApi{
         VideoNextPage(related,relatedToken,comments.first,comments.second)
     }
 
-    suspend fun moreComments(token:String):Pair<List<VideoComment>,String?>=withContext(Dispatchers.IO){loadComments(token)}
+    suspend fun moreComments(token:String):Pair<List<VideoComment>,String?> = withContext(Dispatchers.IO){loadComments(token)}
 
     private fun parseVideoItems(root:JSONObject?):List<Video>{
         if(root==null)return emptyList()
