@@ -40,6 +40,7 @@ object LocalLibrary{
   db(c).insertWithOnConflict("subscriptions",null,v,SQLiteDatabase.CONFLICT_REPLACE)
  }
  fun unsubscribe(c:Context,id:String){db(c).delete("subscriptions","channel_id=?",arrayOf(id))}
+ fun isSubscribed(c:Context,id:String):Boolean=db(c).rawQuery("SELECT 1 FROM subscriptions WHERE channel_id=?",arrayOf(id)).use{it.moveToFirst()}
  fun subscriptions(c:Context):List<Triple<String,String,String?>>{
   val out=mutableListOf<Triple<String,String,String?>>()
   db(c).rawQuery("SELECT channel_id,name,avatar FROM subscriptions ORDER BY name COLLATE NOCASE",null).use{cur->
