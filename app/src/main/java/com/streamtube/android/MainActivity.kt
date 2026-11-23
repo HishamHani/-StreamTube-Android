@@ -150,7 +150,7 @@ private fun StreamTubeApp() {
         }
     ) { padding ->
         if (selected != null) {
-            VideoPlayer(selected!!, Modifier.padding(padding))
+            VideoPlayer(selected!!, Modifier.padding(padding), onVideo = ::openVideo)
         } else when (tab) {
             Tab.Home -> HomeScreen(
                 modifier = Modifier.padding(padding),
@@ -340,7 +340,7 @@ private fun VideoRow(video: Video, onClick: (Video) -> Unit) {
 }
 
 @Composable
-private fun VideoPlayer(video: Video, modifier: Modifier = Modifier) {
+private fun VideoPlayer(video: Video, modifier: Modifier = Modifier, onVideo: (Video) -> Unit) {
     val context = LocalContext.current
     var streamUrl by remember(video.id) { mutableStateOf<String?>(null) }
     var streamMimeType by remember(video.id) { mutableStateOf(MimeTypes.APPLICATION_M3U8) }
@@ -496,9 +496,7 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier) {
             } else if (relatedVideos.isEmpty()) {
                 Text("No related videos returned.", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
             } else {
-                relatedVideos.take(12).forEach { related -> VideoRow(related) { item ->
-                    context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(item.watchUrl)))
-                } }
+                relatedVideos.take(12).forEach { related -> VideoRow(related, onVideo) }
             }
             Divider(color = Color.DarkGray, modifier = Modifier.padding(vertical = 8.dp))
             Text("Comments", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
