@@ -18,6 +18,8 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Subscriptions
+import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -56,7 +58,7 @@ class MainActivity : ComponentActivity() {
 
 private enum class Tab(val label: String) {
     Home("Home"), Search("Search"), Subscriptions("Subscriptions"),
-    Downloads("Downloads"), Settings("Settings")
+    Library("Library"), Downloads("Downloads"), Settings("Settings")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -133,6 +135,7 @@ private fun StreamTubeApp() {
                         Tab.Home -> Icons.Default.Home
                         Tab.Search -> Icons.Default.Search
                         Tab.Subscriptions -> Icons.Default.Subscriptions
+                        Tab.Library -> Icons.Default.VideoLibrary
                         Tab.Downloads -> Icons.Default.Download
                         Tab.Settings -> Icons.Default.Settings
                     }
@@ -170,6 +173,7 @@ private fun StreamTubeApp() {
                 onVideo = ::openVideo
             )
             Tab.Subscriptions -> SubscriptionsScreen(Modifier.padding(padding), signedIn = signedIn, onVideo = ::openVideo)
+            Tab.Library -> LibraryScreen(Modifier.padding(padding), onVideo = ::openVideo)
             Tab.Downloads -> InfoScreen(Modifier.padding(padding), "Downloads",
                 "The download manager is not connected yet. It will be added after search and playback are stable.")
             Tab.Settings -> SettingsScreen(
@@ -529,6 +533,37 @@ private fun SubscriptionsScreen(modifier: Modifier, signedIn: Boolean, onVideo: 
     }
 }
 
+@Composable
+private fun LibraryScreen(modifier: Modifier, onVideo: (Video) -> Unit) {
+    val context = LocalContext.current
+    var refresh by remember { mutableIntStateOf(0) }
+    val history = remember(refresh) { LocalLibrary.history(context, 100) }
+    val watchLater = remember(refresh) { LocalLibrary.watchLater(context) }
+    Column(modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("Your library", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            TextButton(onClick = { LocalLibrary.clearHistory(context); LocalLibrary.clearWatchLater(context); refresh++ }) { Text("Clear all") }
+        }
+        LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            item { Text("Watch Later (${watchLater.size})", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+            if (watchLater.isEmpty()) item { Text("Videos you save with Watch Later will appear here.", color = Color.Gray) }
+            items(watchLater, key = { "later_" + it.id }) { video ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f)) { VideoRow(video, onVideo) }
+                    IconButton(onClick = { LocalLibrary.removeWatchLater(context, video.id); refresh++ }) { Icon(Icons.Default.Delete, contentDescription = "Remove from Watch Later") }
+                }
+            }
+            item { Text("Watch history (${history.size})", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+            if (history.isEmpty()) item { Text("Videos you watch will appear here.", color = Color.Gray) }
+            items(history, key = { "history_" + it.id }) { video ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f)) { VideoRow(video, onVideo) }
+                    IconButton(onClick = { LocalLibrary.removeHistory(context, video.id); refresh++ }) { Icon(Icons.Default.Delete, contentDescription = "Remove from history") }
+                }
+            }
+        }
+    }
+}
 @Composable
 private fun SettingsScreen(
     modifier: Modifier, signedIn: Boolean, accountName: String, preferences: StreamTubePreferences,
