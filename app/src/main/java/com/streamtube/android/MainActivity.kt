@@ -77,6 +77,11 @@ private fun StreamTubeApp() {
     var loginBusy by remember { mutableStateOf(false) }
     var loginMessage by remember { mutableStateOf<String?>(null) }
 
+    fun openVideo(video: Video) {
+        selected = video
+        if (preferences.rememberHistory) LocalLibrary.addHistory(context, video)
+    }
+
     fun searchNow() {
         val q = query.trim()
         if (q.isEmpty()) return
@@ -146,7 +151,7 @@ private fun StreamTubeApp() {
             Tab.Home -> HomeScreen(
                 modifier = Modifier.padding(padding),
                 query = query, onQuery = { query = it }, onSearch = ::searchNow,
-                recent = videos.take(8), onVideo = { selected = it }
+                recent = LocalLibrary.history(context), onVideo = ::openVideo
             )
             Tab.Search -> SearchScreen(
                 modifier = Modifier.padding(padding), query = query, onQuery = { query = it },
@@ -161,7 +166,7 @@ private fun StreamTubeApp() {
                         finally { loading = false }
                     }
                 },
-                onVideo = { selected = it }
+                onVideo = ::openVideo
             )
             Tab.Subscriptions -> if (signedIn) SubscriptionsScreen(Modifier.padding(padding), onVideo = { selected = it })
                 else InfoScreen(Modifier.padding(padding), "Subscriptions", "Sign in from Settings to see your YouTube subscriptions.")
