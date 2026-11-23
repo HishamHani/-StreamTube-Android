@@ -59,49 +59,75 @@ object StreamResolver {
 
     suspend fun downloadFormats(videoId:String):List<DownloadFormat> = withContext(Dispatchers.IO){
         val visitor=fetchVisitorData().orEmpty()
-        val client=JSONObject().put("clientName","ANDROID_VR").put("clientVersion",VR_VERSION)
-            .put("deviceMake","Oculus").put("deviceModel","Quest 3").put("androidSdkVersion",32)
-            .put("osName","Android").put("osVersion","12L").put("hl","en").put("gl","US")
-            .put("userAgent",VR_UA).put("visitorData",visitor)
-        val json=playerRequest(videoId,client,"28",VR_VERSION,VR_UA,visitor)
-        val streaming=json.optJSONObject("streamingData")?:error("YouTube did not provide downloadable formats")
-        val result=mutableListOf<DownloadFormat>()
-        fun read(array:org.json.JSONArray?){
-            if(array==null)return
-            for(i in 0 until array.length()){
-                val item=array.optJSONObject(i)?:continue
-                val url=item.optString("url").takeIf{it.startsWith("https://")}?:continue
-                val mime=item.optString("mimeType").substringBefore(";")
-                val audio=mime.startsWith("audio/")
-                val video=mime.startsWith("video/")
-                if(!audio&&!video)continue
-                val height=item.optInt("height",0)
-                val quality=item.optString("qualityLabel").ifBlank{
-                    when{height>=2160->"2160p";height>=1440->"1440p";height>=1080->"1080p";height>=720->"720p";height>=480->"480p";height>0->"${height}p";audio->"Audio only";else->"Video"}
+        val clients=listOf(
+            Triple("ANDROID_VR",VR_VERSION,"28"),
+            Triple("IOS",IOS_VERSION,"5"),
+            Triple("WEB", "2.20251120.01.00", "1")
+        )
+        val collected=mutableListOf<DownloadFormat>()
+        for((name,version,clientId) in clients){
+            val ua=when(name){"IOS"->IOS_UA;"WEB"->"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";else->VR_UA}
+            try {
+                val client=when(name){
+                    "IOS"->JSONObject().put("clientName",name).put("clientVersion",version).put("deviceMake","Apple").put("deviceModel","iPhone16,2").put("osName","iPhone").put("osVersion","18.3.2")
+                    "WEB"->JSONObject().put("clientName",name).put("clientVersion",version).put("hl","en").put("gl","US")
+                    else->JSONObject().put("clientName",name).put("clientVersion",version).put("deviceMake","Oculus").put("deviceModel","Quest 3").put("androidSdkVersion",32).put("osName","Android").put("osVersion","12L")
+                }.put("userAgent",ua).put("visitorData",visitor)
+                val json=playerRequest(videoId,client,clientId,version,ua,visitor)
+                val streaming=json.optJSONObject("streamingData")?:continue
+                val duration=json.optJSONObject("videoDetails")?.optLong("lengthSeconds",0L)?:0L
+                fun add(array:org.json.JSONArray?, progressive:Boolean){
+                    if(array==null)return
+                    for(i in 0 until array.length()){
+                        val item=array.optJSONObject(i)?:continue
+                        val mime=item.optString("mimeType").substringBefore(";")
+                        val audio=mime.startsWith("audio/")
+                        val video=mime.startsWith("video/")
+                        if(!audio&&!video)continue
+                        val rawUrl=item.optString("url")
+                        val url=if(rawUrl.startsWith("https://")) rawUrl else {
+                            // Some clients return a signatureCipher with a ready-to-use signature.
+                            val cipher=item.optString("signatureCipher").ifBlank{item.optString("cipher")}
+                            if(cipher.isBlank()) "" else try {
+                                val params=cipher.split("&").mapNotNull{part->
+                                    val index=part.indexOf("=")
+                                    if(index<0)null else java.net.URLDecoder.decode(part.substring(0,index),"UTF-8") to java.net.URLDecoder.decode(part.substring(index+1),"UTF-8")
+                                }.toMap()
+                                val base=params["url"].orEmpty()
+                                val signature=params["sig"]?:params["signature"]
+                                if(base.startsWith("https://")&&signature!=null){
+                                    val key=params["sp"]?: "signature"
+                                    base + (if(base.contains("?")) "&" else "?") + key + "=" + java.net.URLEncoder.encode(signature,"UTF-8")
+                                } else ""
+                            } catch(_:Throwable){""}
+                        }
+                        if(url.isBlank())continue
+                        val height=item.optInt("height",0)
+                        val quality=item.optString("qualityLabel").ifBlank{
+                            when{height>=4320->"4320p";height>=2160->"2160p";height>=1440->"1440p";height>=1080->"1080p";height>=720->"720p";height>=480->"480p";height>0->"${height}p";else->"Video"}
+                        }
+                        val ext=when{
+                            audio && (mime.contains("audio/mp4")||mime.contains("mp4a")||mime.contains("aac"))->"m4a"
+                            audio && mime.contains("webm")->"webm"
+                            audio->"m4a"
+                            mime.contains("webm")->"webm"
+                            mime.contains("3gpp")->"3gp"
+                            else->"mp4"
+                        }
+                        val size=item.optString("contentLength").toLongOrNull()?.takeIf{it>0}
+                            ?: if(item.optLong("bitrate")>0&&duration>0) item.optLong("bitrate")*duration/8L else 0L
+                        // The formats[] array contains progressive A/V files; adaptive video entries are silent.
+                        val videoOnly=video&&!progressive
+                        val label=when{audio->"Audio only · $ext";videoOnly->"$quality · $ext · video only";else->"$quality · $ext"}
+                        collected+=DownloadFormat(label,url,mime,ext,height,audio,ua,visitor,size,videoOnly)
+                    }
                 }
-                val ext=when{
-                    audio && (mime.contains("audio/mp4") || mime.contains("mp4a") || mime.contains("aac")) -> "m4a"
-                    audio && mime.contains("webm") -> "webm"
-                    audio -> "m4a"
-                    mime.contains("webm")->"webm"
-                    mime.contains("3gpp")->"3gp"
-                    else->"mp4"
-                }
-                val durationSeconds=json.optJSONObject("videoDetails")?.optLong("lengthSeconds",0L) ?: 0L
-                val size=item.optString("contentLength").toLongOrNull()?.takeIf{it>0}
-                    ?: if(item.optLong("bitrate")>0 && durationSeconds>0L) item.optLong("bitrate")*durationSeconds/8L else 0L
-                val videoOnly=video && !item.has("audioQuality")
-                val label=when { audio -> "Audio only · $ext"; videoOnly -> "$quality · $ext · video only"; else -> "$quality · $ext" }
-                result+=DownloadFormat(label,url,mime,ext,height,audio,VR_UA,visitor,size,videoOnly)
-            }
+                add(streaming.optJSONArray("formats"),true)
+                add(streaming.optJSONArray("adaptiveFormats"),false)
+            } catch(_:Throwable) { /* Try the next YouTube client for formats missing from this response. */ }
         }
-        // Include progressive streams plus every adaptive video/audio stream.
-        // Adaptive video is labelled because it requires audio muxing for complete playback.
-        read(streaming.optJSONArray("formats"))
-        read(streaming.optJSONArray("adaptiveFormats"))
-        result.distinctBy{it.url}.sortedWith(compareBy<DownloadFormat>{it.audioOnly}.thenByDescending{it.height})
+        collected.distinctBy{it.url}.sortedWith(compareBy<DownloadFormat>{it.audioOnly}.thenByDescending{it.height}.thenByDescending{it.sizeBytes})
     }
-
 
 
     private fun fetchVisitorData():String?{
