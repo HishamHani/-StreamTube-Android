@@ -1,6 +1,8 @@
 package com.streamtube.android
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import kotlinx.coroutines.Dispatchers
@@ -31,6 +33,10 @@ object YouTubeAuth {
 
     fun isSignedIn(context: Context) = prefs(context).getString("refresh_token", null).orEmpty().isNotBlank()
     fun signOut(context: Context) = prefs(context).edit().clear().apply()
+
+    fun openVerification(context: Context, login: DeviceLogin) {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(login.url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
 
     suspend fun begin(): DeviceLogin = withContext(Dispatchers.IO) {
         val form = FormBody.Builder()
