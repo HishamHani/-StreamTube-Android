@@ -152,7 +152,7 @@ private fun StreamTubeApp() {
             Tab.Home -> HomeScreen(
                 modifier = Modifier.padding(padding),
                 query = query, onQuery = { query = it }, onSearch = ::searchNow,
-                recent = LocalLibrary.history(context), watchLater = LocalLibrary.watchLater(context), onVideo = ::openVideo
+                recent = LocalLibrary.history(context), watchLater = LocalLibrary.watchLater(context), signedIn = signedIn, onVideo = ::openVideo
             )
             Tab.Search -> SearchScreen(
                 modifier = Modifier.padding(padding), query = query, onQuery = { query = it },
@@ -239,16 +239,32 @@ private fun StreamTubeApp() {
 @Composable
 private fun HomeScreen(
     modifier: Modifier, query: String, onQuery: (String) -> Unit, onSearch: () -> Unit,
-    recent: List<Video>, watchLater: List<Video>, onVideo: (Video) -> Unit
+    recent: List<Video>, watchLater: List<Video>, signedIn: Boolean, onVideo: (Video) -> Unit
 ) {
+    val context = LocalContext.current
+    var accountFeed by remember { mutableStateOf<List<Video>>(emptyList()) }
+    var feedError by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(signedIn) {
+        if (signedIn) {
+            try { accountFeed = YouTubeApi.signedInHome(context).videos }
+            catch (t: Throwable) { feedError = t.message ?: "Could not load your YouTube Home" }
+        } else {
+            accountFeed = emptyList()
+            feedError = null
+        }
+    }
     Column(modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Watch what you love", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Text("Search YouTube videos without signing in.", color = Color.LightGray)
+            Text(if (signedIn) "Your YouTube Home" else "Watch what you love", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Text(if (signedIn) "Recommendations from your YouTube account." else "Search YouTube videos without signing in.", color = Color.LightGray)
             SearchBox(query, onQuery, onSearch)
         }
-        if (recent.isNotEmpty() || watchLater.isNotEmpty()) {
+        if (accountFeed.isNotEmpty() || recent.isNotEmpty() || watchLater.isNotEmpty()) {
             LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (accountFeed.isNotEmpty()) {
+                    item { Text("Recommended for you", fontWeight = FontWeight.Bold) }
+                    items(accountFeed) { VideoRow(it, onVideo) }
+                }
                 if (recent.isNotEmpty()) {
                     item { Text("Continue watching", fontWeight = FontWeight.Bold) }
                     items(recent) { VideoRow(it, onVideo) }
@@ -260,7 +276,7 @@ private fun HomeScreen(
             }
         } else {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Search for a video to get started", color = Color.Gray)
+                Text(feedError ?: "Search for a video to get started", color = Color.Gray)
             }
         }
     }
