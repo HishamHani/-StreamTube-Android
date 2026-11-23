@@ -281,6 +281,10 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier) {
     var streamError by remember(video.id) { mutableStateOf<String?>(null) }
     var resolving by remember(video.id) { mutableStateOf(true) }
     var retryCount by remember(video.id) { mutableIntStateOf(0) }
+    var sponsorSegments by remember(video.id) { mutableStateOf<List<SponsorSegment>>(emptyList()) }
+    var displayTitle by remember(video.id) { mutableStateOf(video.title) }
+    var dislikeVotes by remember(video.id) { mutableStateOf<DislikeVotes?>(null) }
+    val skippedSegments = remember(video.id) { mutableSetOf<String>() }
 
     val player = remember(video.id) {
         val httpFactory = DefaultHttpDataSource.Factory()
@@ -298,6 +302,9 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier) {
         try {
             val stream = StreamResolver.resolve(video.id)
             streamUrl = stream.hlsUrl
+            launch { sponsorSegments = runCatching { YouTubeServices.sponsorSegments(video.id) }.getOrDefault(emptyList()) }
+            launch { val branding = YouTubeServices.deArrow(video.id); if (!branding?.title.isNullOrBlank()) displayTitle = branding!!.title!! }
+            launch { dislikeVotes = YouTubeServices.returnDislike(video.id) }
         } catch (t: Throwable) {
             streamError = t.message ?: "Unable to load this video"
         } finally {
@@ -310,6 +317,20 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier) {
         player.setMediaItem(MediaItem.Builder().setUri(url).setMimeType(MimeTypes.APPLICATION_M3U8).build())
         player.prepare()
         player.playWhenReady = true
+    }
+
+    LaunchedEffect(player, sponsorSegments) {
+        val autoSkip = setOf("sponsor", "selfpromo", "interaction")
+        while (true) {
+            val now = player.currentPosition / 1000.0
+            val segment = sponsorSegments.firstOrNull { it.category in autoSkip && it.uuid !in skippedSegments && now >= it.start && now < it.end }
+            if (segment != null) {
+                skippedSegments += segment.uuid
+                player.seekTo((segment.end * 1000).toLong())
+                launch { YouTubeServices.reportSponsorViewed(segment.uuid) }
+            }
+            kotlinx.coroutines.delay(350)
+        }
     }
 
     DisposableEffect(player) {
@@ -327,8 +348,11 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier) {
             update = { it.player = player }
         )
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(video.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(displayTitle, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text(video.channel, color = Color.LightGray)
+            dislikeVotes?.let { votes ->
+                Text("👍 ${votes.likes}    👎 ${votes.dislikes}", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+            }
             if (resolving) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     CircularProgressIndicator(modifier = Modifier.size(20.dp), color = AppRed, strokeWidth = 2.dp)
