@@ -522,9 +522,9 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier, onVideo: (V
                     if (!commentsLoading) actionScope.launch {
                         commentsLoading = true
                         try {
-                            val page = YouTubeApi.videoNextPage(video.id, token)
-                            comments = comments + page.comments.filterNot { item -> comments.any { it.id == item.id } }
-                            commentsContinuation = page.commentContinuation
+                            val page = YouTubeApi.moreComments(token)
+                            comments = comments + page.first.filterNot { item -> comments.any { it.id == item.id } }
+                            commentsContinuation = page.second
                         } catch (t: Throwable) { detailsError = t.message ?: "Could not load more comments" }
                         finally { commentsLoading = false }
                     }
