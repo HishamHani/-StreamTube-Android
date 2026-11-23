@@ -42,9 +42,31 @@ object StreamResolver {
         error("Could not obtain a playable YouTube stream. " + failures.joinToString(" | "))
     }
 
+    private fun fetchVisitorData(): String? {
+        return try {
+            val context = JSONObject().put("client", JSONObject()
+                .put("clientName", "WEB")
+                .put("clientVersion", "2.20251120.01.00")
+                .put("hl", "en").put("gl", "US"))
+            val body = JSONObject().put("context", context)
+                .toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+            val request = Request.Builder()
+                .url("https://www.youtube.com/youtubei/v1/visitor_id?prettyPrint=false")
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36")
+                .post(body).build()
+            http.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return null
+                JSONObject(response.body?.string().orEmpty())
+                    .optJSONObject("responseContext")?.optString("visitorData")
+                    ?.takeIf { it.isNotBlank() }
+            }
+        } catch (_: Throwable) { null }
+    }
+
     private fun requestPlayer(videoId: String, name: String, version: String, userAgent: String): String {
         val clientName = if (name == "visionOS") "VISIONOS" else "IOS"
         val clientId = if (name == "visionOS") "101" else "5"
+        val visitorData = if (name == "visionOS") fetchVisitorData() else null
         val client = JSONObject()
             .put("clientName", clientName)
             .put("clientVersion", version)
@@ -55,6 +77,7 @@ object StreamResolver {
             .put("userAgent", userAgent)
             .put("hl", "en")
             .put("gl", "US")
+        if (!visitorData.isNullOrBlank()) client.put("visitorData", visitorData)
         val body = JSONObject()
             .put("videoId", videoId)
             .put("contentCheckOk", true)
@@ -66,6 +89,7 @@ object StreamResolver {
             .header("Origin", "https://www.youtube.com")
             .header("X-YouTube-Client-Name", clientId)
             .header("X-YouTube-Client-Version", version)
+            .apply { if (!visitorData.isNullOrBlank()) header("X-Goog-Visitor-Id", visitorData) }
             .post(body).build()
         http.newCall(request).execute().use { response ->
             val raw = response.body?.string().orEmpty()
