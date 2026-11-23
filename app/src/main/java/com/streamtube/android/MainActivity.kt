@@ -274,6 +274,7 @@ private fun VideoRow(video: Video, onClick: (Video) -> Unit) {
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 private fun VideoPlayer(video: Video, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
     Column(modifier.fillMaxSize()) {
         AndroidView(
             modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f),
