@@ -107,7 +107,7 @@ object YouTubeApi{
         return client.newCall(request).execute().use{response->
             if(!response.isSuccessful)error("RSS HTTP ${response.code}")
             val parser=org.xmlpull.v1.XmlPullParserFactory.newInstance().newPullParser()
-            parser.setInput(response.body?.charStream(),"UTF-8")
+            parser.setInput(response.body?.charStream())
             val out=mutableListOf<Video>()
             var inEntry=false
             var title="";var id="";var author="";var published="";var thumbnail=""
