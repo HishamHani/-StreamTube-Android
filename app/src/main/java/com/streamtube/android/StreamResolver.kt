@@ -90,8 +90,18 @@ object StreamResolver {
                 result+=DownloadFormat(label,url,mime,ext,height,audio,VR_UA,visitor)
             }
         }
+        // Progressive formats contain both video and audio. Adaptive video-only
+        // streams are excluded until a local muxer is integrated.
         read(streaming.optJSONArray("formats"))
-        read(streaming.optJSONArray("adaptiveFormats"))
+        val adaptive=streaming.optJSONArray("adaptiveFormats")
+        if(adaptive!=null){
+            val audioItems=org.json.JSONArray()
+            for(i in 0 until adaptive.length()){
+                val item=adaptive.optJSONObject(i)?:continue
+                if(item.optString("mimeType").substringBefore(";").startsWith("audio/"))audioItems.put(item)
+            }
+            read(audioItems)
+        }
         result.distinctBy{it.url}.sortedWith(compareBy<DownloadFormat>{it.audioOnly}.thenByDescending{it.height})
     }
 
