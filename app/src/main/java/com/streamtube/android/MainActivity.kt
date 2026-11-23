@@ -66,6 +66,7 @@ private fun StreamTubeApp() {
     var tab by remember { mutableStateOf(Tab.Home) }
     var query by remember { mutableStateOf("") }
     var videos by remember { mutableStateOf<List<Video>>(emptyList()) }
+    var continuation by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var selected by remember { mutableStateOf<Video?>(null) }
@@ -83,7 +84,9 @@ private fun StreamTubeApp() {
         error = null
         scope.launch {
             try {
-                videos = YouTubeApi.search(q)
+                val page = YouTubeApi.searchPage(q)
+                videos = page.videos
+                continuation = page.continuation
                 if (videos.isEmpty()) error = "No videos found. Try another search."
             } catch (t: Throwable) {
                 error = t.message ?: "Search failed. Check your connection."
@@ -147,6 +150,16 @@ private fun StreamTubeApp() {
             Tab.Search -> SearchScreen(
                 modifier = Modifier.padding(padding), query = query, onQuery = { query = it },
                 onSearch = ::searchNow, videos = videos, loading = loading, error = error,
+                continuation = continuation,
+                onLoadMore = {
+                    val token = continuation
+                    if (token != null && !loading) scope.launch {
+                        loading = true
+                        try { val page = YouTubeApi.continueSearch(token); videos = videos + page.videos.filterNot { v -> videos.any { it.id == v.id } }; continuation = page.continuation }
+                        catch (t: Throwable) { error = t.message ?: "Could not load more results" }
+                        finally { loading = false }
+                    }
+                },
                 onVideo = { selected = it }
             )
             Tab.Subscriptions -> InfoScreen(Modifier.padding(padding), "Subscriptions",
@@ -244,19 +257,26 @@ private fun HomeScreen(
 @Composable
 private fun SearchScreen(
     modifier: Modifier, query: String, onQuery: (String) -> Unit, onSearch: () -> Unit,
-    videos: List<Video>, loading: Boolean, error: String?, onVideo: (Video) -> Unit
+    videos: List<Video>, loading: Boolean, error: String?, continuation: String?,
+    onLoadMore: () -> Unit, onVideo: (Video) -> Unit
 ) {
     Column(modifier.fillMaxSize()) {
         SearchBox(query, onQuery, onSearch, Modifier.padding(16.dp))
         when {
-            loading -> Box(Modifier.fillMaxWidth().padding(30.dp), contentAlignment = Alignment.Center) {
+            loading && videos.isEmpty() -> Box(Modifier.fillMaxWidth().padding(30.dp), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = AppRed)
             }
-            error != null -> Text(error, Modifier.padding(18.dp), color = MaterialTheme.colorScheme.error)
+            error != null && videos.isEmpty() -> Text(error, Modifier.padding(18.dp), color = MaterialTheme.colorScheme.error)
             videos.isEmpty() -> Text("Enter a search term to find videos.", Modifier.padding(18.dp), color = Color.Gray)
             else -> LazyColumn(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(videos) { VideoRow(it, onVideo) }
+                if (continuation != null) item {
+                    OutlinedButton(onClick = onLoadMore, enabled = !loading, modifier = Modifier.fillMaxWidth()) {
+                        if (loading) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        else Text("Load more")
+                    }
+                }
             }
         }
     }
