@@ -38,8 +38,10 @@ object YouTubeApi {
         val body = JSONObject().put("context", context).put("query", query)
             .toString().toRequestBody("application/json; charset=utf-8".toMediaType())
         val request = Request.Builder().url(SEARCH_URL)
-            .header("User-Agent", "Mozilla/5.0")
+            .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36")
             .header("Origin", "https://www.youtube.com")
+            .header("X-YouTube-Client-Name", "1")
+            .header("X-YouTube-Client-Version", CLIENT_VERSION)
             .post(body).build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) error("YouTube returned HTTP ${response.code}")
