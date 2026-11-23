@@ -28,6 +28,8 @@ object LocalLibrary{
   db(c).insertWithOnConflict("history",null,values,SQLiteDatabase.CONFLICT_REPLACE)
  }
  fun history(c:Context,limit:Int=30):List<Video> = readVideos(c,"history","watched_at",limit)
+ fun removeHistory(c:Context,id:String){db(c).delete("history","video_id=?",arrayOf(id))}
+ fun clearHistory(c:Context){db(c).delete("history",null,null)}
  fun addWatchLater(c:Context,v:Video){
   val values=videoValues(v).apply{put("added_at",System.currentTimeMillis())}
   db(c).insertWithOnConflict("watch_later",null,values,SQLiteDatabase.CONFLICT_REPLACE)
@@ -35,6 +37,7 @@ object LocalLibrary{
  fun removeWatchLater(c:Context,id:String){db(c).delete("watch_later","video_id=?",arrayOf(id))}
  fun isWatchLater(c:Context,id:String):Boolean=db(c).rawQuery("SELECT 1 FROM watch_later WHERE video_id=?",arrayOf(id)).use{it.moveToFirst()}
  fun watchLater(c:Context):List<Video> = readVideos(c,"watch_later","added_at",100)
+ fun clearWatchLater(c:Context){db(c).delete("watch_later",null,null)}
  fun subscribe(c:Context,id:String,name:String,avatar:String?=null){
   val v=ContentValues().apply{put("channel_id",id);put("name",name);put("avatar",avatar)}
   db(c).insertWithOnConflict("subscriptions",null,v,SQLiteDatabase.CONFLICT_REPLACE)
