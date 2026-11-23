@@ -83,7 +83,7 @@ object StreamResolver {
                     mime.contains("mp4")->"mp4"
                     mime.contains("webm")->"webm"
                     mime.contains("3gpp")->"3gp"
-                    mime.contains("mp4a")||mime.contains("aac")->"m4a"
+                    mime.contains("audio/mp4")||mime.contains("mp4a")||mime.contains("aac")->"m4a"
                     else->if(audio)"webm" else "mp4"
                 }
                 val label=if(audio)"Audio only · $ext" else "$quality · $ext"
