@@ -21,6 +21,8 @@ data class Video(
 ){val watchUrl:String get()="https://www.youtube.com/watch?v=$id"}
 
 data class SearchPage(val videos:List<Video>,val continuation:String?=null)
+data class VideoComment(val id:String,val author:String,val text:String,val likes:String,val published:String)
+data class VideoNextPage(val related:List<Video>,val comments:List<VideoComment>,val commentContinuation:String?)
 
 data class SearchFilter(
     val sort:Int=0,val date:Int=0,val kind:Int=0,val duration:Int=0,
@@ -93,6 +95,35 @@ object YouTubeApi{
     }
 
 
+
+    suspend fun videoNextPage(videoId:String,continuation:String?=null):VideoNextPage=withContext(Dispatchers.IO){
+        val body=JSONObject().put("context",webContext())
+        if(continuation.isNullOrBlank())body.put("videoId",videoId) else body.put("continuation",continuation)
+        val root=call("next",body)
+        val related=parsePage(root).videos.filterNot{it.id==videoId}
+        val comments=mutableListOf<VideoComment>()
+        var nextToken:String?=null
+        fun walk(value:Any?){
+            when(value){
+                is JSONObject->{
+                    value.optJSONObject("commentRenderer")?.let{r->
+                        val id=r.optString("commentId")
+                        if(id.isNotBlank()){
+                            comments+=VideoComment(id,text(r.optJSONObject("authorText")),text(r.optJSONObject("contentText")),
+                                text(r.optJSONObject("voteCount")),text(r.optJSONObject("publishedTimeText")))
+                        }
+                    }
+                    value.optJSONObject("continuationItemRenderer")?.optJSONObject("continuationEndpoint")
+                        ?.optJSONObject("continuationCommand")?.optString("token")?.takeIf{it.isNotBlank()}?.let{nextToken=it}
+                    val keys=value.keys()
+                    while(keys.hasNext()){val k=keys.next();if(k!="commentRenderer")walk(value.opt(k))}
+                }
+                is JSONArray->for(i in 0 until value.length())walk(value.opt(i))
+            }
+        }
+        walk(root)
+        VideoNextPage(related,comments.distinctBy{it.id},nextToken)
+    }
 
     suspend fun localSubscriptions(context:android.content.Context):List<Video> = coroutineScope {
         val channels=LocalLibrary.subscriptions(context)
