@@ -69,6 +69,7 @@ private fun StreamTubeApp() {
     var error by remember { mutableStateOf<String?>(null) }
     var selected by remember { mutableStateOf<Video?>(null) }
     var signedIn by remember { mutableStateOf(YouTubeAuth.isSignedIn(context)) }
+    var preferences by remember { mutableStateOf(AppPreferences.load(context)) }
     var login by remember { mutableStateOf<DeviceLogin?>(null) }
     var loginBusy by remember { mutableStateOf(false) }
     var loginMessage by remember { mutableStateOf<String?>(null) }
@@ -153,7 +154,18 @@ private fun StreamTubeApp() {
             Tab.Downloads -> InfoScreen(Modifier.padding(padding), "Downloads",
                 "The download manager is not connected yet. It will be added after search and playback are stable.")
             Tab.Settings -> SettingsScreen(
-                modifier = Modifier.padding(padding), signedIn = signedIn,
+                modifier = Modifier.padding(padding), signedIn = signedIn, preferences = preferences,
+                onPreference = { key, value ->
+                    AppPreferences.setBoolean(context, key, value)
+                    preferences = when (key) {
+                        "sponsorBlock" -> preferences.copy(sponsorBlock = value)
+                        "deArrowTitles" -> preferences.copy(deArrowTitles = value)
+                        "returnDislike" -> preferences.copy(returnDislike = value)
+                        "autoplayNext" -> preferences.copy(autoplayNext = value)
+                        "rememberHistory" -> preferences.copy(rememberHistory = value)
+                        else -> preferences
+                    }
+                },
                 onSignIn = {
                     loginMessage = null
                     loginBusy = true
@@ -281,6 +293,7 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier) {
     var streamError by remember(video.id) { mutableStateOf<String?>(null) }
     var resolving by remember(video.id) { mutableStateOf(true) }
     var retryCount by remember(video.id) { mutableIntStateOf(0) }
+    val preferences = remember { AppPreferences.load(context) }
     var sponsorSegments by remember(video.id) { mutableStateOf<List<SponsorSegment>>(emptyList()) }
     var displayTitle by remember(video.id) { mutableStateOf(video.title) }
     var dislikeVotes by remember(video.id) { mutableStateOf<DislikeVotes?>(null) }
@@ -302,9 +315,9 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier) {
         try {
             val stream = StreamResolver.resolve(video.id)
             streamUrl = stream.hlsUrl
-            launch { sponsorSegments = runCatching { YouTubeServices.sponsorSegments(video.id) }.getOrDefault(emptyList()) }
-            launch { val branding = YouTubeServices.deArrow(video.id); if (!branding?.title.isNullOrBlank()) displayTitle = branding!!.title!! }
-            launch { dislikeVotes = YouTubeServices.returnDislike(video.id) }
+            if (preferences.sponsorBlock) launch { sponsorSegments = runCatching { YouTubeServices.sponsorSegments(video.id) }.getOrDefault(emptyList()) }
+            if (preferences.deArrowTitles) launch { val branding = YouTubeServices.deArrow(video.id); if (!branding?.title.isNullOrBlank()) displayTitle = branding!!.title!! }
+            if (preferences.returnDislike) launch { dislikeVotes = YouTubeServices.returnDislike(video.id) }
         } catch (t: Throwable) {
             streamError = t.message ?: "Unable to load this video"
         } finally {
@@ -320,7 +333,7 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier) {
     }
 
     LaunchedEffect(player, sponsorSegments) {
-        val autoSkip = setOf("sponsor", "selfpromo", "interaction")
+        val autoSkip = preferences.autoSkipCategories
         while (true) {
             val now = player.currentPosition / 1000.0
             val segment = sponsorSegments.firstOrNull { it.category in autoSkip && it.uuid !in skippedSegments && now >= it.start && now < it.end }
@@ -378,7 +391,8 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier) {
 
 @Composable
 private fun SettingsScreen(
-    modifier: Modifier, signedIn: Boolean, onSignIn: () -> Unit, onSignOut: () -> Unit, loginBusy: Boolean
+    modifier: Modifier, signedIn: Boolean, preferences: StreamTubePreferences,
+    onPreference: (String, Boolean) -> Unit, onSignIn: () -> Unit, onSignOut: () -> Unit, loginBusy: Boolean
 ) {
     Column(modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text("Settings", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
@@ -395,7 +409,33 @@ private fun SettingsScreen(
                     color = Color.Gray, style = MaterialTheme.typography.bodySmall)
             }
         }
-        Text("More player, privacy and SponsorBlock settings will be added in later builds.", color = Color.Gray)
+        Card(colors = CardDefaults.cardColors(containerColor = AppSurface)) {
+            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Watching", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                PreferenceSwitch("SponsorBlock", "Skip sponsor reads and other marked segments", preferences.sponsorBlock) { onPreference("sponsorBlock", it) }
+                PreferenceSwitch("DeArrow titles", "Use community-submitted alternative titles", preferences.deArrowTitles) { onPreference("deArrowTitles", it) }
+                PreferenceSwitch("Return YouTube Dislike", "Show estimated likes and dislikes", preferences.returnDislike) { onPreference("returnDislike", it) }
+                PreferenceSwitch("Autoplay next", "Continue to the next queued video", preferences.autoplayNext) { onPreference("autoplayNext", it) }
+            }
+        }
+        Card(colors = CardDefaults.cardColors(containerColor = AppSurface)) {
+            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Privacy", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                PreferenceSwitch("Watch history", "Remember videos watched in Stream Tube", preferences.rememberHistory) { onPreference("rememberHistory", it) }
+            }
+        }
+        Text("More desktop settings are being ported: playback quality, captions, region, proxy, downloads and feed filters.", color = Color.Gray)
+    }
+}
+
+@Composable
+private fun PreferenceSwitch(title: String, detail: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(title, fontWeight = FontWeight.Medium)
+            Text(detail, color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+        }
+        Switch(checked = checked, onCheckedChange = onChecked)
     }
 }
 
