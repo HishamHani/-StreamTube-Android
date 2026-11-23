@@ -280,6 +280,7 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier) {
     var streamUrl by remember(video.id) { mutableStateOf<String?>(null) }
     var streamError by remember(video.id) { mutableStateOf<String?>(null) }
     var resolving by remember(video.id) { mutableStateOf(true) }
+    var retryCount by remember(video.id) { mutableIntStateOf(0) }
 
     val player = remember(video.id) {
         val httpFactory = DefaultHttpDataSource.Factory()
@@ -290,7 +291,7 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier) {
             .build()
     }
 
-    LaunchedEffect(video.id) {
+    LaunchedEffect(video.id, retryCount) {
         resolving = true
         streamError = null
         streamUrl = null
@@ -337,10 +338,8 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier) {
             streamError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (streamError != null) {
                 OutlinedButton(onClick = {
-                    resolving = true
                     streamError = null
-                    // Changing the key restarts stream resolution through the retry action below.
-                    player.stop()
+                    retryCount++
                 }) {
                     Text("Retry")
                 }
