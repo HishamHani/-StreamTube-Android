@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Subscriptions
 import androidx.compose.material3.*
@@ -162,9 +163,8 @@ private fun StreamTubeApp() {
                 },
                 onVideo = { selected = it }
             )
-            Tab.Subscriptions -> InfoScreen(Modifier.padding(padding), "Subscriptions",
-                if (signedIn) "Account connected. Your subscription feed integration is the next step."
-                else "Sign in from Settings to connect your YouTube account.")
+            Tab.Subscriptions -> if (signedIn) SubscriptionsScreen(Modifier.padding(padding), onVideo = { selected = it })
+                else InfoScreen(Modifier.padding(padding), "Subscriptions", "Sign in from Settings to see your YouTube subscriptions.")
             Tab.Downloads -> InfoScreen(Modifier.padding(padding), "Downloads",
                 "The download manager is not connected yet. It will be added after search and playback are stable.")
             Tab.Settings -> SettingsScreen(
@@ -432,6 +432,43 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier) {
                     context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,
                         android.net.Uri.parse(video.watchUrl)))
                 }) { Text("Open in YouTube") }
+            }
+        }
+    }
+}
+
+
+@Composable
+private fun SubscriptionsScreen(modifier: Modifier, onVideo: (Video) -> Unit) {
+    val context = LocalContext.current
+    var videos by remember { mutableStateOf<List<Video>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var refresh by remember { mutableIntStateOf(0) }
+    LaunchedEffect(refresh) {
+        loading = true
+        error = null
+        try { videos = YouTubeApi.signedInSubscriptions(context).videos }
+        catch (t: Throwable) { error = t.message ?: "Could not load subscriptions" }
+        finally { loading = false }
+    }
+    Column(modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Latest from your subscriptions", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            IconButton(onClick = { refresh++ }) { Icon(Icons.Default.Refresh, contentDescription = "Refresh") }
+        }
+        when {
+            loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = AppRed) }
+            error != null -> Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(error!!, color = MaterialTheme.colorScheme.error)
+                Button(onClick = { refresh++ }) { Text("Try again") }
+            }
+            videos.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("No subscription videos found.", color = Color.Gray)
+            }
+            else -> LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                items(videos) { VideoRow(it, onVideo) }
             }
         }
     }
