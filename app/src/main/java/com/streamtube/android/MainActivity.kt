@@ -151,7 +151,7 @@ private fun StreamTubeApp() {
             Tab.Home -> HomeScreen(
                 modifier = Modifier.padding(padding),
                 query = query, onQuery = { query = it }, onSearch = ::searchNow,
-                recent = LocalLibrary.history(context), onVideo = ::openVideo
+                recent = LocalLibrary.history(context), watchLater = LocalLibrary.watchLater(context), onVideo = ::openVideo
             )
             Tab.Search -> SearchScreen(
                 modifier = Modifier.padding(padding), query = query, onQuery = { query = it },
@@ -238,7 +238,7 @@ private fun StreamTubeApp() {
 @Composable
 private fun HomeScreen(
     modifier: Modifier, query: String, onQuery: (String) -> Unit, onSearch: () -> Unit,
-    recent: List<Video>, onVideo: (Video) -> Unit
+    recent: List<Video>, watchLater: List<Video>, onVideo: (Video) -> Unit
 ) {
     Column(modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -246,10 +246,16 @@ private fun HomeScreen(
             Text("Search YouTube videos without signing in.", color = Color.LightGray)
             SearchBox(query, onQuery, onSearch)
         }
-        if (recent.isNotEmpty()) {
-            Text("Recent results", Modifier.padding(horizontal = 16.dp), fontWeight = FontWeight.Bold)
+        if (recent.isNotEmpty() || watchLater.isNotEmpty()) {
             LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(recent) { VideoRow(it, onVideo) }
+                if (recent.isNotEmpty()) {
+                    item { Text("Continue watching", fontWeight = FontWeight.Bold) }
+                    items(recent) { VideoRow(it, onVideo) }
+                }
+                if (watchLater.isNotEmpty()) {
+                    item { Text("Watch Later", Modifier.padding(top = 10.dp), fontWeight = FontWeight.Bold) }
+                    items(watchLater) { VideoRow(it, onVideo) }
+                }
             }
         } else {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
