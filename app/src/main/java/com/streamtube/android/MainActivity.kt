@@ -352,6 +352,9 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier, onVideo: (V
     var savedLater by remember(video.id) { mutableStateOf(LocalLibrary.isWatchLater(context, video.id)) }
     var subscribed by remember(video.channelId) { mutableStateOf(video.channelId?.let { LocalLibrary.isSubscribed(context, it) } ?: false) }
     var actionMessage by remember { mutableStateOf<String?>(null) }
+    var downloadDialog by remember(video.id) { mutableStateOf(false) }
+    var downloadFormats by remember(video.id) { mutableStateOf<List<DownloadFormat>>(emptyList()) }
+    var downloadLoading by remember(video.id) { mutableStateOf(false) }
     val actionScope = rememberCoroutineScope()
     var streamError by remember(video.id) { mutableStateOf<String?>(null) }
     var resolving by remember(video.id) { mutableStateOf(true) }
@@ -473,6 +476,23 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier, onVideo: (V
                         }
                     }) { Text(if (subscribed) "Subscribed" else "Subscribe") }
                 }
+                OutlinedButton(onClick = {
+                    downloadLoading = true
+                    actionScope.launch {
+                        try {
+                            downloadFormats = StreamResolver.downloadFormats(video.id)
+                            downloadDialog = true
+                            if (downloadFormats.isEmpty()) actionMessage = "YouTube did not return direct downloadable formats for this video."
+                        } catch (t: Throwable) {
+                            actionMessage = t.message ?: "Could not load download formats"
+                        } finally { downloadLoading = false }
+                    }
+                }, enabled = !downloadLoading) {
+                    if (downloadLoading) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                    else Icon(Icons.Default.Download, contentDescription = "Download")
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (downloadLoading) "Loading" else "Download")
+                }
             }
             actionMessage?.let { Text(it, color = Color.Gray, style = MaterialTheme.typography.bodySmall) }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -558,6 +578,34 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier, onVideo: (V
             }
         }
     }
+
+        if (downloadDialog) {
+            AlertDialog(
+                onDismissRequest = { downloadDialog = false },
+                title = { Text("Download for offline") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Choose a quality or audio-only file. Downloads are saved in your device's Downloads/StreamTube folder.")
+                        downloadFormats.forEach { format ->
+                            TextButton(onClick = {
+                                try {
+                                    OfflineDownloads.enqueue(context, video, format)
+                                    actionMessage = "Download queued: ${format.label}"
+                                    downloadDialog = false
+                                } catch (t: Throwable) {
+                                    actionMessage = t.message ?: "Could not start download"
+                                }
+                            }, modifier = Modifier.fillMaxWidth()) {
+                                Text(format.label, modifier = Modifier.fillMaxWidth())
+                            }
+                        }
+                        if (downloadFormats.isEmpty()) Text("No directly downloadable formats are available.", color = Color.Gray)
+                        Text("MP3 conversion is not included yet. Audio-only downloads keep YouTube's original audio format.", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                    }
+                },
+                confirmButton = { TextButton(onClick = { downloadDialog = false }) { Text("Close") } }
+            )
+        }
 }
 
 
