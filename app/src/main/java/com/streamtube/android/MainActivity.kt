@@ -22,6 +22,18 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Subscriptions
 import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.rounded.PlayCircle
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Movie
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Subscriptions
+import androidx.compose.material.icons.rounded.VideoLibrary
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -43,17 +55,23 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.launch
 
-private val AppBlack = Color(0xFF101114)
-private val AppSurface = Color(0xFF1A1C20)
-private val AppRed = Color(0xFFFF0033)
+private val AppBlack = Color(0xFF081525)
+private val AppSurface = Color(0xFF10243A)
+private val AppSurfaceRaised = Color(0xFF172D46)
+private val AppGold = Color(0xFFE8BD68)
+private val AppGoldSoft = Color(0xFFF4D99A)
+private val AppRed = AppGold
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme(colorScheme = darkColorScheme(
-                primary = AppRed, background = AppBlack, surface = AppSurface,
-                onBackground = Color.White, onSurface = Color.White
+                primary = AppGold, secondary = AppGoldSoft, background = AppBlack, surface = AppSurface,
+                onPrimary = Color(0xFF172235), onSecondary = Color(0xFF172235),
+                onBackground = Color(0xFFF5F1E8), onSurface = Color(0xFFF5F1E8),
+                surfaceVariant = AppSurfaceRaised, onSurfaceVariant = Color(0xFFB8C4D2),
+                outline = Color(0xFF52657A), outlineVariant = Color(0xFF344A61)
             )) { StreamTubeApp() }
         }
     }
@@ -112,41 +130,42 @@ private fun StreamTubeApp() {
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(28.dp).background(AppRed, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
-                            Text("▶", color = Color.White, fontWeight = FontWeight.Bold)
+                        Box(Modifier.size(32.dp).background(AppGold, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Rounded.PlayCircle, contentDescription = null, tint = Color(0xFF10243A), modifier = Modifier.size(24.dp))
                         }
                         Text("  Stream Tube", fontWeight = FontWeight.Bold)
                     }
                 },
                 navigationIcon = {
                     if (selected != null) IconButton(onClick = { selected = null }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.Rounded.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
                     IconButton(onClick = { tab = Tab.Search }) {
-                        Icon(Icons.Default.Search, contentDescription = "Search")
+                        Icon(Icons.Rounded.Search, contentDescription = "Search")
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = AppBlack)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = AppBlack, titleContentColor = Color(0xFFF5F1E8), navigationIconContentColor = AppGold, actionIconContentColor = AppGold)
             )
         },
         bottomBar = {
             if (selected == null) NavigationBar(containerColor = AppSurface) {
                 Tab.entries.forEach { item ->
                     val icon = when (item) {
-                        Tab.Home -> Icons.Default.Home
-                        Tab.Search -> Icons.Default.Search
-                        Tab.Subscriptions -> Icons.Default.Subscriptions
-                        Tab.Library -> Icons.Default.VideoLibrary
-                        Tab.Downloads -> Icons.Default.Download
-                        Tab.Settings -> Icons.Default.Settings
+                        Tab.Home -> Icons.Rounded.PlayCircle
+                        Tab.Search -> Icons.Rounded.Search
+                        Tab.Subscriptions -> Icons.Rounded.Subscriptions
+                        Tab.Library -> Icons.Rounded.VideoLibrary
+                        Tab.Downloads -> Icons.Rounded.Download
+                        Tab.Settings -> Icons.Rounded.Settings
                     }
                     NavigationBarItem(
                         selected = tab == item,
                         onClick = { tab = item },
                         icon = { Icon(icon, contentDescription = item.label) },
-                        label = { Text(item.label, maxLines = 1) }
+                        label = { Text(item.label, maxLines = 1) },
+                        colors = NavigationBarItemDefaults.colors(selectedIconColor = AppGold, selectedTextColor = AppGold, indicatorColor = AppGold.copy(alpha = 0.16f), unselectedIconColor = Color(0xFF91A4B8), unselectedTextColor = Color(0xFF91A4B8))
                     )
                 }
             }
@@ -323,7 +342,7 @@ private fun SearchBox(query: String, onQuery: (String) -> Unit, onSearch: () -> 
         OutlinedTextField(value = query, onValueChange = onQuery, modifier = Modifier.weight(1f),
             singleLine = true, placeholder = { Text("Search videos") })
         Spacer(Modifier.width(8.dp))
-        Button(onClick = onSearch, colors = ButtonDefaults.buttonColors(containerColor = AppRed)) {
+        Button(onClick = onSearch, shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = AppGold, contentColor = Color(0xFF10243A))) {
             Icon(Icons.Default.Search, contentDescription = "Search")
         }
     }
@@ -477,7 +496,7 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier, onVideo: (V
                         }
                     }) { Text(if (subscribed) "Subscribed" else "Subscribe") }
                 }
-                OutlinedButton(
+                IconButton(
                     onClick = {
                         downloadLoading = true
                         actionScope.launch {
@@ -491,12 +510,10 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier, onVideo: (V
                         }
                     },
                     enabled = !downloadLoading,
-                    modifier = Modifier.size(width = 56.dp, height = 48.dp),
-                    contentPadding = PaddingValues(0.dp),
-                    shape = RoundedCornerShape(50)
+                    modifier = Modifier.size(48.dp).background(AppSurfaceRaised, CircleShape)
                 ) {
-                    if (downloadLoading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                    else Icon(Icons.Default.Download, contentDescription = "Download")
+                    if (downloadLoading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = AppGold)
+                    else Icon(Icons.Rounded.Download, contentDescription = "Download", tint = AppGold, modifier = Modifier.size(25.dp))
                 }
             }
             actionMessage?.let { Text(it, color = Color.Gray, style = MaterialTheme.typography.bodySmall) }
@@ -516,7 +533,7 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier, onVideo: (V
                 }
                 Text("Source: $streamSource", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
             }
-            Divider(color = Color.DarkGray, modifier = Modifier.padding(vertical = 8.dp))
+            Divider(color = Color(0xFF344A61), modifier = Modifier.padding(vertical = 8.dp))
             Text("Up next", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             if (relatedVideos.isEmpty() && detailsLoading) {
                 CircularProgressIndicator(modifier = Modifier.size(22.dp), color = AppRed, strokeWidth = 2.dp)
@@ -596,7 +613,7 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier, onVideo: (V
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text("Choose a complete video or an audio-only file. Saved in Downloads/StreamTube.", color = Color.Gray)
-                        Text("VIDEO", fontWeight = FontWeight.Bold)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { Icon(Icons.Rounded.Movie, contentDescription = null, tint = AppGold); Text("VIDEO", fontWeight = FontWeight.Bold, color = AppGold) }
                         if (videoOptions.isEmpty()) Text("No complete video formats available.", color = Color.Gray)
                         videoOptions.forEach { format ->
                             TextButton(onClick = {
@@ -613,7 +630,7 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier, onVideo: (V
                             }
                         }
                         Divider(color = Color.DarkGray)
-                        Text("AUDIO", fontWeight = FontWeight.Bold)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { Icon(Icons.Rounded.MusicNote, contentDescription = null, tint = AppGold); Text("AUDIO", fontWeight = FontWeight.Bold, color = AppGold) }
                         if (audioOptions.isEmpty()) Text("YouTube did not return a directly downloadable audio track for this video.", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
                         audioOptions.forEach { format ->
                             TextButton(onClick = {
@@ -665,7 +682,7 @@ private fun SubscriptionsScreen(modifier: Modifier, signedIn: Boolean, onVideo: 
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             Text("Latest from your subscriptions", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            IconButton(onClick = { refresh++ }) { Icon(Icons.Default.Refresh, contentDescription = "Refresh") }
+            IconButton(onClick = { refresh++ }) { Icon(Icons.Rounded.Refresh, contentDescription = "Refresh") }
         }
         when {
             loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = AppRed) }
@@ -700,7 +717,7 @@ private fun LibraryScreen(modifier: Modifier, onVideo: (Video) -> Unit) {
             items(watchLater, key = { "later_" + it.id }) { video ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.weight(1f)) { VideoRow(video, onVideo) }
-                    IconButton(onClick = { LocalLibrary.removeWatchLater(context, video.id); refresh++ }) { Icon(Icons.Default.Delete, contentDescription = "Remove from Watch Later") }
+                    IconButton(onClick = { LocalLibrary.removeWatchLater(context, video.id); refresh++ }) { Icon(Icons.Rounded.Delete, contentDescription = "Remove from Watch Later", tint = AppGold) }
                 }
             }
             item { Text("Watch history (${history.size})", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
@@ -708,7 +725,7 @@ private fun LibraryScreen(modifier: Modifier, onVideo: (Video) -> Unit) {
             items(history, key = { "history_" + it.id }) { video ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.weight(1f)) { VideoRow(video, onVideo) }
-                    IconButton(onClick = { LocalLibrary.removeHistory(context, video.id); refresh++ }) { Icon(Icons.Default.Delete, contentDescription = "Remove from history") }
+                    IconButton(onClick = { LocalLibrary.removeHistory(context, video.id); refresh++ }) { Icon(Icons.Rounded.Delete, contentDescription = "Remove from history", tint = AppGold) }
                 }
             }
         }
@@ -721,14 +738,14 @@ private fun SettingsScreen(
 ) {
     Column(modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text("Settings", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Card(colors = CardDefaults.cardColors(containerColor = AppSurface)) {
+        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = AppSurface)) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("YouTube account", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(if (signedIn) accountName else "Not signed in", color = if (signedIn) Color(0xFF75D69C) else Color.LightGray)
                 if (signedIn) YouTubeAuth.account(LocalContext.current).handle?.let { Text(it, color = Color.Gray) }
                 if (signedIn) OutlinedButton(onClick = onSignOut) { Text("Sign out") }
                 else Button(onClick = onSignIn, enabled = !loginBusy,
-                    colors = ButtonDefaults.buttonColors(containerColor = AppRed)) {
+                    shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = AppGold, contentColor = Color(0xFF10243A))) {
                     Text(if (loginBusy) "Starting…" else "Sign in with Google")
                 }
                 Text("Sign-in uses Google's device approval page. Never share your verification code with anyone.",
