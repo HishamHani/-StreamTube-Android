@@ -477,22 +477,26 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier, onVideo: (V
                         }
                     }) { Text(if (subscribed) "Subscribed" else "Subscribe") }
                 }
-                OutlinedButton(onClick = {
-                    downloadLoading = true
-                    actionScope.launch {
-                        try {
-                            downloadFormats = StreamResolver.downloadFormats(video.id)
-                            downloadDialog = true
-                            if (downloadFormats.isEmpty()) actionMessage = "YouTube did not return direct downloadable formats for this video."
-                        } catch (t: Throwable) {
-                            actionMessage = t.message ?: "Could not load download formats"
-                        } finally { downloadLoading = false }
-                    }
-                }, enabled = !downloadLoading) {
-                    if (downloadLoading) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                OutlinedButton(
+                    onClick = {
+                        downloadLoading = true
+                        actionScope.launch {
+                            try {
+                                downloadFormats = StreamResolver.downloadFormats(video.id)
+                                downloadDialog = true
+                                if (downloadFormats.isEmpty()) actionMessage = "No downloadable formats were returned by YouTube."
+                            } catch (t: Throwable) {
+                                actionMessage = t.message ?: "Could not load download formats"
+                            } finally { downloadLoading = false }
+                        }
+                    },
+                    enabled = !downloadLoading,
+                    modifier = Modifier.size(width = 56.dp, height = 48.dp),
+                    contentPadding = PaddingValues(0.dp),
+                    shape = RoundedCornerShape(50)
+                ) {
+                    if (downloadLoading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                     else Icon(Icons.Default.Download, contentDescription = "Download")
-                    Spacer(Modifier.width(6.dp))
-                    Text(if (downloadLoading) "Loading" else "Download")
                 }
             }
             actionMessage?.let { Text(it, color = Color.Gray, style = MaterialTheme.typography.bodySmall) }
@@ -585,23 +589,47 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier, onVideo: (V
                 onDismissRequest = { downloadDialog = false },
                 title = { Text("Download for offline") },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("Choose a quality or audio-only file. Downloads are saved in your device's Downloads/StreamTube folder.")
-                        downloadFormats.forEach { format ->
+                    val videoOptions = downloadFormats.filter { !it.audioOnly && !it.videoOnly }
+                    val audioOptions = downloadFormats.filter { it.audioOnly }
+                    Column(
+                        modifier = Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text("Choose a complete video or an audio-only file. Saved in Downloads/StreamTube.", color = Color.Gray)
+                        Text("VIDEO", fontWeight = FontWeight.Bold)
+                        if (videoOptions.isEmpty()) Text("No complete video formats available.", color = Color.Gray)
+                        videoOptions.forEach { format ->
                             TextButton(onClick = {
                                 try {
                                     OfflineDownloads.enqueue(context, video, format)
-                                    actionMessage = "Download queued: ${format.label}"
+                                    actionMessage = "Video download queued: ${format.label}"
                                     downloadDialog = false
-                                } catch (t: Throwable) {
-                                    actionMessage = t.message ?: "Could not start download"
-                                }
+                                } catch (t: Throwable) { actionMessage = t.message ?: "Could not start download" }
                             }, modifier = Modifier.fillMaxWidth()) {
-                                Column(Modifier.fillMaxWidth()) { Text(format.label, color = AppRed); Text(if (format.sizeBytes > 0L) formatBytes(format.sizeBytes) else "Size unavailable", color = Color.Gray, style = MaterialTheme.typography.labelSmall) }
+                                Column(Modifier.fillMaxWidth()) {
+                                    Text(format.label, color = AppRed)
+                                    Text(if (format.sizeBytes > 0L) formatBytes(format.sizeBytes) else "Size unavailable", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
+                                }
                             }
                         }
-                        if (downloadFormats.isEmpty()) Text("No directly downloadable formats are available.", color = Color.Gray)
-                        Text("Audio files keep their actual M4A or WebM format. Adaptive video-only options do not include sound yet; complete high-quality MP4 merging is still being implemented.", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                        Divider(color = Color.DarkGray)
+                        Text("AUDIO", fontWeight = FontWeight.Bold)
+                        if (audioOptions.isEmpty()) Text("YouTube did not return a directly downloadable audio track for this video.", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                        audioOptions.forEach { format ->
+                            TextButton(onClick = {
+                                try {
+                                    OfflineDownloads.enqueue(context, video, format)
+                                    actionMessage = "Audio download queued: ${format.label}"
+                                    downloadDialog = false
+                                } catch (t: Throwable) { actionMessage = t.message ?: "Could not start download" }
+                            }, modifier = Modifier.fillMaxWidth()) {
+                                Column(Modifier.fillMaxWidth()) {
+                                    Text(format.label, color = AppRed)
+                                    Text(if (format.sizeBytes > 0L) formatBytes(format.sizeBytes) else "Size unavailable", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                        }
+                        Text("Audio keeps its real M4A or WebM file extension.", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
                     }
                 },
                 confirmButton = { TextButton(onClick = { downloadDialog = false }) { Text("Close") } }
