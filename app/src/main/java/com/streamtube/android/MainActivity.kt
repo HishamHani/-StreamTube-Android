@@ -484,7 +484,7 @@ private fun SubscriptionsScreen(modifier: Modifier, signedIn: Boolean, onVideo: 
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var refresh by remember { mutableIntStateOf(0) }
-    LaunchedEffect(refresh) {
+    LaunchedEffect(refresh, signedIn) {
         loading = true
         error = null
         try { videos = if (signedIn) YouTubeApi.signedInSubscriptions(context).videos else YouTubeApi.localSubscriptions(context) }
