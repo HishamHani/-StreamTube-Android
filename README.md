@@ -1,45 +1,39 @@
-# StreamTube Android Port
+# StreamTube Android
 
-A mobile-first Android port workspace for the Stream Tube desktop project.
+An Android-first porting workspace for Stream Tube, the Rust/GPUI desktop YouTube client.
 
-## Current Android foundation
+## Implemented in the current Android prototype
 
-- Native Android application module using Kotlin and Jetpack Compose
-- Dark Stream Tube-inspired mobile interface
-- Bottom navigation for Home, Explore, Subscriptions, Downloads and Settings
-- Internet permission declared for upcoming service integration
-- GitHub Actions workflow that builds and uploads a debug APK artifact
+- Native Kotlin + Jetpack Compose mobile interface
+- YouTube search through the Innertube WEB endpoint (no Google sign-in required for search)
+- Search results with thumbnails, titles, channel names and duration
+- In-app embedded YouTube playback using the YouTube iframe player
+- Experimental Google/YouTube device-code sign-in UI; it stores tokens using Android encrypted shared preferences
+
+## Not implemented yet
+
+- Authenticated account feeds and subscription synchronization
+- Native stream extraction / ExoPlayer playback (current player is the official embedded YouTube player)
+- SponsorBlock, DeArrow and Return YouTube Dislike integration
+- Downloads, offline library, watch history synchronization, comments, Shorts and live chat
+- Full migration of desktop Rust business logic
 
 ## Build
 
-The GitHub Actions workflow runs on pushes to `main`, pull requests, and manual dispatch.
+GitHub Actions builds a debug APK on pushes to `main` and manual workflow dispatches.
 
-It builds the debug APK with JDK 17 and Gradle 8.9:
+1. Open the **Actions** tab.
+2. Select **Android APK**.
+3. Open a successful run.
+4. Download the `streamtube-android-debug` artifact and install the APK.
 
-```bash
-gradle --no-daemon :app:assembleDebug
-```
+## Important notes
 
-Output: `app/build/outputs/apk/debug/app-debug.apk`
+- YouTube's Innertube endpoints are undocumented and may change or rate-limit requests.
+- Embedded playback can be restricted for some videos or regions.
+- The device-code sign-in endpoint is an undocumented YouTube TV flow and may be changed or disabled by Google. A successful sign-in currently stores the account tokens, but authenticated feeds are not wired into the app yet.
+- This is an alpha port, not feature parity with the desktop app.
 
-## Important source-project notes
+## Source
 
-The supplied desktop project is Rust (edition 2024), uses GPUI for its desktop UI and libmpv for playback, and targets Windows and Linux. It contains no Android or Gradle project. A direct target switch cannot produce a working Android app.
-
-This repository therefore starts an Android-native implementation. Desktop-only UI, windowing, native player bindings, and platform integrations must be replaced or adapted. The original project's API and data logic can be evaluated for reuse module by module.
-
-## Porting roadmap
-
-- [x] Create Android project structure
-- [x] Add a touch-friendly Compose application shell
-- [x] Add GitHub Actions debug APK build
-- [ ] Connect search and video catalogue data
-- [ ] Implement video playback using an Android-compatible player integration
-- [ ] Port subscriptions, local library and history
-- [ ] Add SponsorBlock, DeArrow and Return YouTube Dislike integrations
-- [ ] Add downloads, captions, background playback and picture-in-picture
-- [ ] Test on physical Android devices
-
-## Current limitations
-
-The current app is a buildable UI foundation, not a feature-complete port. Search, playback, sign-in, downloads and the desktop app's integrations are not connected yet. A successful CI build will provide a debug APK for installation and testing; it does not imply those features are complete.
+Desktop project: https://github.com/Avaneesh-Inamdar/Stream-Tube-Desktop
