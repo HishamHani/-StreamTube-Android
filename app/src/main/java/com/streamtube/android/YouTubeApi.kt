@@ -96,33 +96,106 @@ object YouTubeApi{
 
 
 
-    suspend fun videoNextPage(videoId:String,continuation:String?=null):VideoNextPage=withContext(Dispatchers.IO){
-        val body=JSONObject().put("context",webContext())
-        if(continuation.isNullOrBlank())body.put("videoId",videoId) else body.put("continuation",continuation)
-        val root=call("next",body)
-        val related=parsePage(root).videos.filterNot{it.id==videoId}
-        val comments=mutableListOf<VideoComment>()
-        var nextToken:String?=null
-        fun walk(value:Any?){
-            when(value){
-                is JSONObject->{
-                    value.optJSONObject("commentRenderer")?.let{r->
-                        val id=r.optString("commentId")
-                        if(id.isNotBlank()){
-                            comments+=VideoComment(id,text(r.optJSONObject("authorText")),text(r.optJSONObject("contentText")),
-                                text(r.optJSONObject("voteCount")),text(r.optJSONObject("publishedTimeText")))
-                        }
+    suspend fun videoNextPage(videoId:String):VideoNextPage=withContext(Dispatchers.IO){
+        val root=call("next",JSONObject().put("context",webContext()).put("videoId",videoId).put("contentCheckOk",true).put("racyCheckOk",true))
+        val watch=root.optJSONObject("contents")?.optJSONObject("twoColumnWatchNextResults")
+        val secondary=watch?.optJSONObject("secondaryResults")
+        val related=parseVideoItems(secondary)
+        val relatedToken=findContinuation(secondary)
+        val commentToken=findCommentToken(watch)
+        val comments=if(commentToken!=null)loadComments(commentToken) else Pair(emptyList(),null)
+        VideoNextPage(related,relatedToken,comments.first,comments.second)
+    }
+
+    suspend fun moreComments(token:String):Pair<List<VideoComment>,String?>=withContext(Dispatchers.IO){loadComments(token)}
+
+    private fun parseVideoItems(root:JSONObject?):List<Video>{
+        if(root==null)return emptyList()
+        val out=mutableListOf<Video>()
+        fun walk(v:Any?){when(v){
+            is JSONObject->{
+                for(k in listOf("videoRenderer","compactVideoRenderer","gridVideoRenderer","playlistVideoRenderer","playlistPanelVideoRenderer","videoWithContextRenderer","reelItemRenderer"))v.optJSONObject(k)?.let{parseVideo(it)?.let(out::add)}
+                v.optJSONObject("lockupViewModel")?.let{lock->
+                    val id=lock.optString("contentId")
+                    if(id.isNotBlank()&&lock.optString("contentType").contains("VIDEO")){
+                        val title=lock.optJSONObject("metadata")?.optJSONObject("lockupMetadataViewModel")?.optJSONObject("title")?.optString("content").orEmpty()
+                        if(title.isNotBlank())out+=Video(id,title,"","https://i.ytimg.com/vi/$id/hqdefault.jpg","")
                     }
-                    value.optJSONObject("continuationItemRenderer")?.optJSONObject("continuationEndpoint")
-                        ?.optJSONObject("continuationCommand")?.optString("token")?.takeIf{it.isNotBlank()}?.let{nextToken=it}
-                    val keys=value.keys()
-                    while(keys.hasNext()){val k=keys.next();if(k!="commentRenderer")walk(value.opt(k))}
                 }
-                is JSONArray->for(i in 0 until value.length())walk(value.opt(i))
+                val keys=v.keys();while(keys.hasNext()){val k=keys.next();if(k !in setOf("videoRenderer","compactVideoRenderer","gridVideoRenderer","playlistVideoRenderer","playlistPanelVideoRenderer","videoWithContextRenderer","reelItemRenderer","lockupViewModel"))walk(v.opt(k))}
+            }
+            is JSONArray->for(i in 0 until v.length())walk(v.opt(i))
+        }}
+        walk(root);return out.distinctBy{it.id}
+    }
+
+    private fun findContinuation(root:JSONObject?):String?{
+        if(root==null)return null
+        var token:String?=null
+        fun walk(v:Any?){when(v){
+            is JSONObject->{
+                v.optJSONObject("continuationItemRenderer")?.optJSONObject("continuationEndpoint")?.optJSONObject("continuationCommand")?.optString("token")?.takeIf{it.isNotBlank()}?.let{token=it}
+                v.optJSONObject("nextContinuationData")?.optString("continuation")?.takeIf{it.isNotBlank()}?.let{token=it}
+                val keys=v.keys();while(keys.hasNext())walk(v.opt(keys.next()))
+            }
+            is JSONArray->for(i in 0 until v.length())walk(v.opt(i))
+        }}
+        walk(root);return token
+    }
+
+    private fun findCommentToken(root:JSONObject?):String?{
+        if(root==null)return null
+        var token:String?=null
+        fun walk(v:Any?){when(v){
+            is JSONObject->{
+                if(v.optString("sectionIdentifier")=="comment-item-section"){
+                    token=v.optJSONArray("contents")?.optJSONObject(0)?.optJSONObject("continuationItemRenderer")?.optJSONObject("continuationEndpoint")?.optJSONObject("continuationCommand")?.optString("token")
+                }
+                val keys=v.keys();while(keys.hasNext())walk(v.opt(keys.next()))
+            }
+            is JSONArray->for(i in 0 until v.length())walk(v.opt(i))
+        }}
+        walk(root);return token?.takeIf{it.isNotBlank()}
+    }
+
+    private fun loadComments(token:String):Pair<List<VideoComment>,String?>{
+        val root=call("next",JSONObject().put("context",webContext()).put("continuation",token))
+        val payloads=mutableMapOf<String,JSONObject>()
+        val mutations=root.optJSONObject("frameworkUpdates")?.optJSONObject("entityBatchUpdate")?.optJSONArray("mutations")
+        if(mutations!=null)for(i in 0 until mutations.length()){
+            val m=mutations.optJSONObject(i)?:continue
+            val p=m.optJSONObject("payload")?.optJSONObject("commentEntityPayload")?:continue
+            payloads[m.optString("entityKey")]=p
+        }
+        val items=mutableListOf<JSONObject>()
+        for(key in listOf("onResponseReceivedEndpoints","onResponseReceivedActions")){
+            val arr=root.optJSONArray(key)?:continue
+            for(i in 0 until arr.length()){
+                val endpoint=arr.optJSONObject(i)?:continue
+                for(command in listOf("reloadContinuationItemsCommand","appendContinuationItemsAction")){
+                    val list=endpoint.optJSONObject(command)?.optJSONArray("continuationItems")?:continue
+                    for(j in 0 until list.length())list.optJSONObject(j)?.let(items::add)
+                }
             }
         }
-        walk(root)
-        VideoNextPage(related,comments.distinctBy{it.id},nextToken)
+        val out=mutableListOf<VideoComment>();var next:String?=null
+        for(item in items){
+            val thread=item.optJSONObject("commentThreadRenderer")
+            val vm=thread?.optJSONObject("commentViewModel")?.optJSONObject("commentViewModel")?:thread?.optJSONObject("commentViewModel")?:item.optJSONObject("commentViewModel")
+            if(vm!=null){
+                val p=payloads[vm.optString("commentKey")]
+                if(p!=null){
+                    val props=p.optJSONObject("properties");val author=p.optJSONObject("author");val toolbar=p.optJSONObject("toolbar")
+                    out+=VideoComment(props?.optString("commentId").orEmpty(),author?.optString("displayName").orEmpty(),props?.optJSONObject("content")?.optString("content").orEmpty(),toolbar?.optString("likeCountNotliked").orEmpty(),props?.optString("publishedTime").orEmpty())
+                }
+            }
+            item.optJSONObject("commentRenderer")?.let{legacy->
+                val id=legacy.optString("commentId")
+                if(id.isNotBlank())out+=VideoComment(id,text(legacy.optJSONObject("authorText")),text(legacy.optJSONObject("contentText")),text(legacy.optJSONObject("voteCount")),text(legacy.optJSONObject("publishedTimeText")))
+            }
+            item.optJSONObject("continuationItemRenderer")?.optJSONObject("continuationEndpoint")?.optJSONObject("continuationCommand")?.optString("token")?.takeIf{it.isNotBlank()}?.let{next=it}
+        }
+        return out.distinctBy{it.id} to next
     }
 
     suspend fun localSubscriptions(context:android.content.Context):List<Video> = coroutineScope {
