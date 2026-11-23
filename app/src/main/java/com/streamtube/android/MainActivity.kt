@@ -72,6 +72,7 @@ private fun StreamTubeApp() {
     var error by remember { mutableStateOf<String?>(null) }
     var selected by remember { mutableStateOf<Video?>(null) }
     var signedIn by remember { mutableStateOf(YouTubeAuth.isSignedIn(context)) }
+    var accountName by remember { mutableStateOf(YouTubeAuth.account(context).name) }
     var preferences by remember { mutableStateOf(AppPreferences.load(context)) }
     var login by remember { mutableStateOf<DeviceLogin?>(null) }
     var loginBusy by remember { mutableStateOf(false) }
@@ -173,7 +174,7 @@ private fun StreamTubeApp() {
             Tab.Downloads -> InfoScreen(Modifier.padding(padding), "Downloads",
                 "The download manager is not connected yet. It will be added after search and playback are stable.")
             Tab.Settings -> SettingsScreen(
-                modifier = Modifier.padding(padding), signedIn = signedIn, preferences = preferences,
+                modifier = Modifier.padding(padding), signedIn = signedIn, accountName = accountName, preferences = preferences,
                 onPreference = { key, value ->
                     AppPreferences.setBoolean(context, key, value)
                     preferences = when (key) {
@@ -194,7 +195,7 @@ private fun StreamTubeApp() {
                         finally { loginBusy = false }
                     }
                 },
-                onSignOut = { YouTubeAuth.signOut(context); signedIn = false },
+                onSignOut = { YouTubeAuth.signOut(context); signedIn = false; accountName = "YouTube account" },
                 loginBusy = loginBusy
             )
         }
@@ -223,6 +224,7 @@ private fun StreamTubeApp() {
                         try {
                             loginMessage = YouTubeAuth.approve(context, device)
                             signedIn = YouTubeAuth.isSignedIn(context)
+                            accountName = YouTubeAuth.account(context).name
                             login = null
                         } catch (t: Throwable) {
                             loginMessage = t.message ?: "Sign-in failed"
@@ -510,7 +512,7 @@ private fun SubscriptionsScreen(modifier: Modifier, signedIn: Boolean, onVideo: 
 
 @Composable
 private fun SettingsScreen(
-    modifier: Modifier, signedIn: Boolean, preferences: StreamTubePreferences,
+    modifier: Modifier, signedIn: Boolean, accountName: String, preferences: StreamTubePreferences,
     onPreference: (String, Boolean) -> Unit, onSignIn: () -> Unit, onSignOut: () -> Unit, loginBusy: Boolean
 ) {
     Column(modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -518,7 +520,8 @@ private fun SettingsScreen(
         Card(colors = CardDefaults.cardColors(containerColor = AppSurface)) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("YouTube account", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text(if (signedIn) "Connected" else "Not signed in", color = if (signedIn) Color(0xFF75D69C) else Color.LightGray)
+                Text(if (signedIn) accountName else "Not signed in", color = if (signedIn) Color(0xFF75D69C) else Color.LightGray)
+                if (signedIn) YouTubeAuth.account(LocalContext.current).handle?.let { Text(it, color = Color.Gray) }
                 if (signedIn) OutlinedButton(onClick = onSignOut) { Text("Sign out") }
                 else Button(onClick = onSignIn, enabled = !loginBusy,
                     colors = ButtonDefaults.buttonColors(containerColor = AppRed)) {
