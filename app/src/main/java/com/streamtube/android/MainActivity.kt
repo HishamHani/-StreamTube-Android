@@ -469,15 +469,15 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier, onVideo: (V
     }
 
     val view = androidx.compose.ui.platform.LocalView.current
-    DisposableEffect(fullscreen) {
-        val decor = view
-        val previous = decor.systemUiVisibility
-        decor.systemUiVisibility = if (fullscreen) (
+    SideEffect {
+        view.systemUiVisibility = if (fullscreen) (
             View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
             View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
             View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
         ) else View.SYSTEM_UI_FLAG_VISIBLE
-        onDispose { decor.systemUiVisibility = previous }
+    }
+    DisposableEffect(Unit) {
+        onDispose { view.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE }
     }
     if (fullscreen) {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
