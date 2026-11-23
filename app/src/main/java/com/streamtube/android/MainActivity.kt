@@ -359,6 +359,12 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier) {
     var displayTitle by remember(video.id) { mutableStateOf(video.title) }
     var dislikeVotes by remember(video.id) { mutableStateOf<DislikeVotes?>(null) }
     val skippedSegments = remember(video.id) { mutableSetOf<String>() }
+    var relatedVideos by remember(video.id) { mutableStateOf<List<Video>>(emptyList()) }
+    var comments by remember(video.id) { mutableStateOf<List<VideoComment>>(emptyList()) }
+    var commentsContinuation by remember(video.id) { mutableStateOf<String?>(null) }
+    var detailsLoading by remember(video.id) { mutableStateOf(true) }
+    var commentsLoading by remember(video.id) { mutableStateOf(false) }
+    var detailsError by remember(video.id) { mutableStateOf<String?>(null) }
 
     val trackSelector = remember(video.id) {
         DefaultTrackSelector(context).apply { setParameters(buildUponParameters().setMaxVideoSize(Int.MAX_VALUE, maxQuality)) }
@@ -391,6 +397,19 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier) {
         } finally {
             resolving = false
         }
+    }
+
+    LaunchedEffect(video.id) {
+        detailsLoading = true
+        detailsError = null
+        try {
+            val page = YouTubeApi.videoNextPage(video.id)
+            relatedVideos = page.related
+            comments = page.comments
+            commentsContinuation = page.commentContinuation
+        } catch (t: Throwable) {
+            detailsError = t.message ?: "Could not load comments and related videos"
+        } finally { detailsLoading = false }
     }
 
     LaunchedEffect(streamUrl) {
@@ -469,6 +488,51 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier) {
                     }
                 }
                 Text("Source: $streamSource", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
+            }
+            Divider(color = Color.DarkGray, modifier = Modifier.padding(vertical = 8.dp))
+            Text("Up next", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            if (relatedVideos.isEmpty() && detailsLoading) {
+                CircularProgressIndicator(modifier = Modifier.size(22.dp), color = AppRed, strokeWidth = 2.dp)
+            } else if (relatedVideos.isEmpty()) {
+                Text("No related videos returned.", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+            } else {
+                relatedVideos.take(12).forEach { related -> VideoRow(related) { item ->
+                    context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(item.watchUrl)))
+                } }
+            }
+            Divider(color = Color.DarkGray, modifier = Modifier.padding(vertical = 8.dp))
+            Text("Comments", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            if (detailsLoading && comments.isEmpty()) {
+                Text("Loading comments…", color = Color.Gray)
+            } else if (comments.isEmpty()) {
+                Text(detailsError ?: "No comments were returned for this video.", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+            } else {
+                comments.forEach { comment ->
+                    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(comment.author.ifBlank { "YouTube user" }, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                            Text(comment.published, color = Color.Gray, style = MaterialTheme.typography.labelSmall)
+                        }
+                        Text(comment.text, style = MaterialTheme.typography.bodyMedium)
+                        if (comment.likes.isNotBlank()) Text("👍 ${comment.likes}", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+            if (commentsContinuation != null) {
+                OutlinedButton(onClick = {
+                    val token = commentsContinuation ?: return@OutlinedButton
+                    if (!commentsLoading) actionScope.launch {
+                        commentsLoading = true
+                        try {
+                            val page = YouTubeApi.videoNextPage(video.id, token)
+                            comments = comments + page.comments.filterNot { item -> comments.any { it.id == item.id } }
+                            commentsContinuation = page.commentContinuation
+                        } catch (t: Throwable) { detailsError = t.message ?: "Could not load more comments" }
+                        finally { commentsLoading = false }
+                    }
+                }, enabled = !commentsLoading, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (commentsLoading) "Loading…" else "More comments")
+                }
             }
             dislikeVotes?.let { votes ->
                 Text("👍 ${votes.likes}    👎 ${votes.dislikes}", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
