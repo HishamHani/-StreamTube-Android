@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit
 
 data class HlsVariant(val url:String,val width:Int,val height:Int,val fps:Int,val bitrate:Long,val label:String)
 data class HlsAudioTrack(val name:String,val language:String,val isDefault:Boolean)
-data class DownloadFormat(val label:String,val url:String,val mimeType:String,val extension:String,val height:Int=0,val audioOnly:Boolean=false,val userAgent:String="",val visitorData:String="",val sizeBytes:Long=0L,val videoOnly:Boolean=false)
+data class DownloadFormat(val label:String,val url:String,val mimeType:String,val extension:String,val height:Int=0,val audioOnly:Boolean=false,val userAgent:String="",val visitorData:String="",val sizeBytes:Long=0L,val videoOnly:Boolean=false,val audioUrl:String?=null,val audioMimeType:String?=null,val audioUserAgent:String?=null,val audioVisitorData:String?=null,val audioSizeBytes:Long=0L)
 data class ResolvedStream(
     val hlsUrl:String,
     val userAgent:String,
@@ -62,12 +62,12 @@ object StreamResolver {
         val clients=listOf(
             Triple("ANDROID_VR",VR_VERSION,"28"),
             Triple("IOS",IOS_VERSION,"5"),
-            Triple("WEB", "2.20251120.01.00", "1")
+            Triple("WEB","2.20251120.01.00","1")
         )
-        val collected=mutableListOf<DownloadFormat>()
+        val output=mutableListOf<DownloadFormat>()
         for((name,version,clientId) in clients){
             val ua=when(name){"IOS"->IOS_UA;"WEB"->"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";else->VR_UA}
-            try {
+            try{
                 val client=when(name){
                     "IOS"->JSONObject().put("clientName",name).put("clientVersion",version).put("deviceMake","Apple").put("deviceModel","iPhone16,2").put("osName","iPhone").put("osVersion","18.3.2")
                     "WEB"->JSONObject().put("clientName",name).put("clientVersion",version).put("hl","en").put("gl","US")
@@ -76,57 +76,61 @@ object StreamResolver {
                 val json=playerRequest(videoId,client,clientId,version,ua,visitor)
                 val streaming=json.optJSONObject("streamingData")?:continue
                 val duration=json.optJSONObject("videoDetails")?.optLong("lengthSeconds",0L)?:0L
-                fun add(array:org.json.JSONArray?, progressive:Boolean){
-                    if(array==null)return
-                    for(i in 0 until array.length()){
-                        val item=array.optJSONObject(i)?:continue
-                        val mime=item.optString("mimeType").substringBefore(";")
-                        val audio=mime.startsWith("audio/")
-                        val video=mime.startsWith("video/")
-                        if(!audio&&!video)continue
-                        val rawUrl=item.optString("url")
-                        val url=if(rawUrl.startsWith("https://")) rawUrl else {
-                            // Some clients return a signatureCipher with a ready-to-use signature.
-                            val cipher=item.optString("signatureCipher").ifBlank{item.optString("cipher")}
-                            if(cipher.isBlank()) "" else try {
-                                val params=cipher.split("&").mapNotNull{part->
-                                    val index=part.indexOf("=")
-                                    if(index<0)null else java.net.URLDecoder.decode(part.substring(0,index),"UTF-8") to java.net.URLDecoder.decode(part.substring(index+1),"UTF-8")
-                                }.toMap()
-                                val base=params["url"].orEmpty()
-                                val signature=params["sig"]?:params["signature"]
-                                if(base.startsWith("https://")&&signature!=null){
-                                    val key=params["sp"]?: "signature"
-                                    base + (if(base.contains("?")) "&" else "?") + key + "=" + java.net.URLEncoder.encode(signature,"UTF-8")
-                                } else ""
-                            } catch(_:Throwable){""}
-                        }
-                        if(url.isBlank())continue
-                        val height=item.optInt("height",0)
-                        val quality=item.optString("qualityLabel").ifBlank{
-                            when{height>=4320->"4320p";height>=2160->"2160p";height>=1440->"1440p";height>=1080->"1080p";height>=720->"720p";height>=480->"480p";height>0->"${height}p";else->"Video"}
-                        }
-                        val ext=when{
-                            audio && (mime.contains("audio/mp4")||mime.contains("mp4a")||mime.contains("aac"))->"m4a"
-                            audio && mime.contains("webm")->"webm"
-                            audio->"m4a"
-                            mime.contains("webm")->"webm"
-                            mime.contains("3gpp")->"3gp"
-                            else->"mp4"
-                        }
-                        val size=item.optString("contentLength").toLongOrNull()?.takeIf{it>0}
-                            ?: if(item.optLong("bitrate")>0&&duration>0) item.optLong("bitrate")*duration/8L else 0L
-                        // The formats[] array contains progressive A/V files; adaptive video entries are silent.
-                        val videoOnly=video&&!progressive
-                        val label=when{audio->"Audio only · $ext";videoOnly->"$quality · $ext · video only";else->"$quality · $ext"}
-                        collected+=DownloadFormat(label,url,mime,ext,height,audio,ua,visitor,size,videoOnly)
+                data class Candidate(val url:String,val mime:String,val ext:String,val height:Int,val size:Long,val bitrate:Long,val ua:String,val visitor:String,val progressive:Boolean)
+                fun parse(item:JSONObject,progressive:Boolean):Candidate?{
+                    val mime=item.optString("mimeType").substringBefore(";")
+                    if(!mime.startsWith("audio/")&&!mime.startsWith("video/"))return null
+                    val raw=item.optString("url")
+                    val url=if(raw.startsWith("https://"))raw else try{
+                        val cipher=item.optString("signatureCipher").ifBlank{item.optString("cipher")}
+                        val params=cipher.split("&").mapNotNull{part->val ix=part.indexOf("=");if(ix<0)null else java.net.URLDecoder.decode(part.substring(0,ix),"UTF-8") to java.net.URLDecoder.decode(part.substring(ix+1),"UTF-8")}.toMap()
+                        val base=params["url"].orEmpty();val sig=params["sig"]?:params["signature"]
+                        if(base.startsWith("https://")&&sig!=null)base+(if(base.contains("?"))"&" else "?")+(params["sp"]?:"signature")+"="+java.net.URLEncoder.encode(sig,"UTF-8") else ""
+                    }catch(_:Throwable){""}
+                    if(url.isBlank())return null
+                    val audio=mime.startsWith("audio/")
+                    val ext=when{
+                        audio&&(mime.contains("mp4")||mime.contains("aac"))->"m4a"
+                        audio->"webm"
+                        mime.contains("webm")->"webm"
+                        else->"mp4"
                     }
+                    val size=item.optString("contentLength").toLongOrNull()?.takeIf{it>0}
+                        ?: if(item.optLong("bitrate")>0&&duration>0)item.optLong("bitrate")*duration/8L else 0L
+                    return Candidate(url,mime,ext,item.optInt("height",0),size,item.optLong("bitrate",0L),ua,visitor,progressive)
                 }
-                add(streaming.optJSONArray("formats"),true)
-                add(streaming.optJSONArray("adaptiveFormats"),false)
-            } catch(_:Throwable) { /* Try the next YouTube client for formats missing from this response. */ }
+                fun candidates(array:org.json.JSONArray?,progressive:Boolean):List<Candidate>{
+                    val out=mutableListOf<Candidate>()
+                    if(array!=null)for(i in 0 until array.length())parse(array.optJSONObject(i)?:continue,progressive)?.let{out+=it}
+                    return out
+                }
+                val progressive=candidates(streaming.optJSONArray("formats"),true)
+                val adaptive=candidates(streaming.optJSONArray("adaptiveFormats"),false)
+                // Keep one best audio track per real container; the UI exposes only M4A and WebM.
+                val audioTracks=adaptive.filter{it.mime.startsWith("audio/")}
+                val bestM4a=audioTracks.filter{it.ext=="m4a"}.maxByOrNull{it.bitrate}
+                val bestWebm=audioTracks.filter{it.ext=="webm"}.maxByOrNull{it.bitrate}
+                // Progressive files already contain audio. Add adaptive MP4 video only when a matching M4A track exists.
+                progressive.filter{it.mime.startsWith("video/")}.forEach{v->
+                    output+=DownloadFormat("${v.height}p · MP4",v.url,v.mime,v.ext,v.height,false,v.ua,v.visitor,v.size,false)
+                }
+                val audioForMp4=bestM4a
+                if(audioForMp4!=null){
+                    adaptive.filter{it.mime.startsWith("video/")&&it.ext=="mp4"&&it.height>0}
+                        .groupBy{it.height}.values.forEach{sameQuality->
+                            val v=sameQuality.maxByOrNull{it.bitrate}?:return@forEach
+                            output+=DownloadFormat("${v.height}p · MP4",v.url,v.mime,"mp4",v.height,false,v.ua,v.visitor,
+                                v.size+audioForMp4.size,false,audioForMp4.url,audioForMp4.mime,audioForMp4.ua,audioForMp4.visitor,audioForMp4.size)
+                        }
+                }
+                listOfNotNull(bestM4a,bestWebm).forEach{a->
+                    output+=DownloadFormat("Audio only · ${a.ext}",a.url,a.mime,a.ext,0,true,a.ua,a.visitor,a.size,false)
+                }
+            }catch(_:Throwable){/* try next client */}
         }
-        collected.distinctBy{it.url}.sortedWith(compareBy<DownloadFormat>{it.audioOnly}.thenByDescending{it.height}.thenByDescending{it.sizeBytes})
+        val videos=output.filter{!it.audioOnly}.groupBy{it.height to it.extension}.values.mapNotNull{group->group.maxByOrNull{it.sizeBytes}}
+        val audio=output.filter{it.audioOnly}.groupBy{it.extension}.values.mapNotNull{group->group.maxByOrNull{it.sizeBytes}}
+        (videos+audio).sortedWith(compareBy<DownloadFormat>{it.audioOnly}.thenByDescending{it.height}.thenBy{it.extension})
     }
 
 
