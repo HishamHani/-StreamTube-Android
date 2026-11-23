@@ -284,7 +284,7 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier) {
 
     val player = remember(video.id) {
         val httpFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent("Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36")
+            .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36")
             .setAllowCrossProtocolRedirects(true)
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))
