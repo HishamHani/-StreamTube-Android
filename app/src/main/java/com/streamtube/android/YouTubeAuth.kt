@@ -8,9 +8,10 @@ import androidx.security.crypto.MasterKey
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import okhttp3.FormBody
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -18,11 +19,14 @@ import java.util.concurrent.TimeUnit
 data class DeviceLogin(val deviceCode: String, val userCode: String, val url: String, val interval: Long, val expires: Long)
 
 object YouTubeAuth {
-    // Public OAuth client identifier used by the upstream desktop project's YouTube TV sign-in flow.
-    // This is not a password. The undocumented Google device endpoint can change without notice.
+    // These are the same public YouTube TV OAuth client credentials and device flow
+    // used by the upstream desktop project. They are app credentials, not user credentials.
     private const val CLIENT_ID = "861556708454-d6dlm3lh05idd8npek18k6be8ba3oc68.apps.googleusercontent.com"
+    private const val CLIENT_SECRET = "SboVhoG9s0rNafixCSGGKXAT"
     private const val SCOPE = "http://gdata.youtube.com https://www.googleapis.com/auth/youtube-paid-content"
+    private const val TV_UA = "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/25.lts.30.1034943-gold (unlike Gecko), Unknown_TV_Unknown_0/Unknown (Unknown, Unknown)"
     private val http = OkHttpClient.Builder().callTimeout(25, TimeUnit.SECONDS).build()
+    private val jsonType = "application/json; charset=utf-8".toMediaType()
 
     private fun prefs(context: Context) = EncryptedSharedPreferences.create(
         context, "youtube_auth",
@@ -38,20 +42,37 @@ object YouTubeAuth {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(login.url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
-    suspend fun begin(): DeviceLogin = withContext(Dispatchers.IO) {
-        val form = FormBody.Builder()
-            .add("client_id", CLIENT_ID).add("scope", SCOPE)
-            .add("device_id", UUID.randomUUID().toString().replace("-", ""))
-            .add("device_model", "ytlr::").build()
-        val request = Request.Builder().url("https://www.youtube.com/o/oauth2/device/code").post(form).build()
+    private fun postOAuth(url: String, payload: JSONObject): JSONObject {
+        val body = payload.toString().toRequestBody(jsonType)
+        val request = Request.Builder().url(url)
+            .header("User-Agent", TV_UA)
+            .header("Accept", "application/json")
+            .post(body).build()
         http.newCall(request).execute().use { response ->
-            val json = JSONObject(response.body?.string() ?: error("No response from Google"))
-            if (!response.isSuccessful || json.has("error"))
-                error(json.optString("error_description", json.optString("error", "Could not start sign-in")))
-            DeviceLogin(json.getString("device_code"), json.getString("user_code"),
-                json.optString("verification_url", "https://www.google.com/device"),
-                json.optLong("interval", 5), json.optLong("expires_in", 1800))
+            val raw = response.body?.string().orEmpty()
+            val json = if (raw.isBlank()) JSONObject() else JSONObject(raw)
+            if (!response.isSuccessful && !json.has("error")) {
+                error("Google sign-in returned HTTP ${response.code}")
+            }
+            return json
         }
+    }
+
+    suspend fun begin(): DeviceLogin = withContext(Dispatchers.IO) {
+        val payload = JSONObject()
+            .put("client_id", CLIENT_ID)
+            .put("scope", SCOPE)
+            .put("device_id", UUID.randomUUID().toString().replace("-", ""))
+            .put("device_model", "ytlr::")
+        val json = postOAuth("https://www.youtube.com/o/oauth2/device/code", payload)
+        if (json.has("error")) error(json.optString("error_description", json.optString("error")))
+        DeviceLogin(
+            json.getString("device_code"),
+            json.getString("user_code"),
+            json.optString("verification_url", "https://www.google.com/device"),
+            json.optLong("interval", 5),
+            json.optLong("expires_in", 1800)
+        )
     }
 
     suspend fun approve(context: Context, login: DeviceLogin): String = withContext(Dispatchers.IO) {
@@ -59,30 +80,32 @@ object YouTubeAuth {
         val endAt = System.currentTimeMillis() + login.expires * 1000
         while (System.currentTimeMillis() < endAt) {
             delay(interval * 1000)
-            val form = FormBody.Builder()
-                .add("client_id", CLIENT_ID)
-                .add("code", login.deviceCode)
-                .add("grant_type", "http://oauth.net/grant_type/device/1.0").build()
-            val request = Request.Builder().url("https://www.youtube.com/o/oauth2/token").post(form).build()
-            http.newCall(request).execute().use { response ->
-                val json = JSONObject(response.body?.string() ?: "{}")
-                when (json.optString("error")) {
-                    "authorization_pending" -> Unit
-                    "slow_down" -> interval += 5
-                    "expired_token" -> error("The code expired. Please try again.")
-                    "access_denied" -> error("Sign-in was cancelled.")
-                    else -> {
-                        val access = json.optString("access_token")
-                        if (access.isNotBlank()) {
-                            prefs(context).edit()
-                                .putString("access_token", access)
-                                .putString("refresh_token", json.optString("refresh_token"))
-                                .putLong("expires_at", System.currentTimeMillis() + json.optLong("expires_in", 3600) * 1000)
-                                .apply()
-                            return@withContext "YouTube account connected"
-                        }
-                        if (!response.isSuccessful) error(json.optString("error_description", "Sign-in failed"))
+            val json = postOAuth(
+                "https://www.youtube.com/o/oauth2/token",
+                JSONObject()
+                    .put("client_id", CLIENT_ID)
+                    .put("client_secret", CLIENT_SECRET)
+                    .put("code", login.deviceCode)
+                    .put("grant_type", "http://oauth.net/grant_type/device/1.0")
+            )
+            when (json.optString("error")) {
+                "authorization_pending" -> Unit
+                "slow_down" -> interval += 5
+                "expired_token" -> error("The code expired. Please try again.")
+                "access_denied" -> error("Sign-in was cancelled.")
+                else -> {
+                    val access = json.optString("access_token")
+                    if (access.isNotBlank()) {
+                        val refresh = json.optString("refresh_token")
+                        if (refresh.isBlank()) error("Google did not return a refresh token. Please try signing in again.")
+                        prefs(context).edit()
+                            .putString("access_token", access)
+                            .putString("refresh_token", refresh)
+                            .putLong("expires_at", System.currentTimeMillis() + json.optLong("expires_in", 3600) * 1000)
+                            .apply()
+                        return@withContext "YouTube account connected"
                     }
+                    error(json.optString("error_description", "Sign-in failed"))
                 }
             }
         }
