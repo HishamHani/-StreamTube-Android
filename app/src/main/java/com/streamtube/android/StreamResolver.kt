@@ -137,7 +137,7 @@ object StreamResolver {
         val req=Request.Builder().url(PLAYER_URL).header("User-Agent",ua).header("Origin","https://www.youtube.com")
             .header("X-YouTube-Client-Name",clientId).header("X-YouTube-Client-Version",version)
             .apply{if(visitor.isNotBlank())header("X-Goog-Visitor-Id",visitor)}.post(body).build()
-        http.newCall(req).execute().use{res->
+        return http.newCall(req).execute().use{res->
             val raw=res.body?.string().orEmpty()
             if(!res.isSuccessful)error("HTTP ${res.code}: ${raw.take(180)}")
             val json=JSONObject(raw)
@@ -194,6 +194,6 @@ object StreamResolver {
 
     private fun getText(url:String,ua:String):String{
         val req=Request.Builder().url(url).header("User-Agent",ua).header("Origin","https://www.youtube.com").build()
-        http.newCall(req).execute().use{res->if(!res.isSuccessful)error("HLS manifest HTTP ${res.code}");res.body?.string().orEmpty()}
+        return http.newCall(req).execute().use{res->if(!res.isSuccessful)error("HLS manifest HTTP ${res.code}");res.body?.string().orEmpty()}
     }
 }
