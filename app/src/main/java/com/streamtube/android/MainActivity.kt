@@ -68,6 +68,8 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import androidx.media3.common.util.UnstableApi
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 
 private val AppBlack = Color(0xFF081525)
 private val AppSurface = Color(0xFF10243A)
@@ -107,6 +109,7 @@ private fun StreamTubeApp() {
     var continuation by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var searchJob by remember { mutableStateOf<Job?>(null) }
     var selected by remember { mutableStateOf<Video?>(null) }
     var playerFullscreen by remember { mutableStateOf(false) }
     BackHandler(enabled = playerFullscreen) { playerFullscreen = false }
@@ -124,20 +127,33 @@ private fun StreamTubeApp() {
 
     fun searchNow() {
         val q = query.trim()
-        if (q.isEmpty()) return
+        if (q.length < 2) return
         tab = Tab.Search
-        loading = true
-        error = null
-        scope.launch {
+        searchJob?.cancel()
+        searchJob = scope.launch {
+            loading = true
+            error = null
             try {
                 val page = YouTubeApi.searchPage(q)
-                videos = page.videos
-                continuation = page.continuation
-                if (videos.isEmpty()) error = "No videos found. Try another search."
+                if (query.trim() == q) {
+                    videos = page.videos
+                    continuation = page.continuation
+                    if (videos.isEmpty()) error = "No videos found. Try another search."
+                }
             } catch (t: Throwable) {
-                error = t.message ?: "Search failed. Check your connection."
-            } finally { loading = false }
+                if (query.trim() == q) error = t.message ?: "Search failed. Check your connection."
+            } finally {
+                if (query.trim() == q) loading = false
+            }
         }
+    }
+
+    // Live search: wait briefly after the user stops typing, then fetch fresh results.
+    LaunchedEffect(query, tab) {
+        val q = query.trim()
+        if (tab != Tab.Search || q.length < 2) return@LaunchedEffect
+        delay(450)
+        if (query.trim() == q) searchNow()
     }
 
     Scaffold(
@@ -374,7 +390,8 @@ private fun VideoRow(video: Video, onClick: (Video) -> Unit) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(video.title, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(video.channel, color = Color.LightGray, style = MaterialTheme.typography.bodySmall, maxLines = 1)
-            if (video.duration.isNotBlank()) Text(video.duration, color = Color.Gray, style = MaterialTheme.typography.labelSmall)
+            val metadata = listOf(video.views.takeIf { it.isNotBlank() }, video.published.takeIf { it.isNotBlank() }, video.duration.takeIf { it.isNotBlank() }).filterNotNull()
+            if (metadata.isNotEmpty()) Text(metadata.joinToString("  ·  "), color = Color(0xFF91A4B8), style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
