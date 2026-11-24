@@ -2,6 +2,10 @@ package com.streamtube.android
 
 import android.annotation.SuppressLint
 import android.view.View
+import android.content.ComponentName
+import android.os.Handler
+import android.os.Looper
+import java.util.concurrent.Executor
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -57,6 +61,9 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import androidx.media3.common.util.UnstableApi
 import kotlinx.coroutines.launch
 
 private val AppBlack = Color(0xFF081525)
@@ -397,18 +404,18 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier, onVideo: (V
     var commentsLoading by remember(video.id) { mutableStateOf(false) }
     var detailsError by remember(video.id) { mutableStateOf<String?>(null) }
 
-    val trackSelector = remember(video.id) {
-        DefaultTrackSelector(context).apply { setParameters(buildUponParameters().setMaxVideoSize(Int.MAX_VALUE, maxQuality)) }
-    }
-
-    val player = remember(video.id) {
-        val httpFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36")
-            .setAllowCrossProtocolRedirects(true)
-        ExoPlayer.Builder(context)
-            .setTrackSelector(trackSelector)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))
-            .build()
+    var player by remember(video.id) { mutableStateOf<MediaController?>(null) }
+    DisposableEffect(video.id) {
+        val token = SessionToken(context, ComponentName(context, PlaybackService::class.java))
+        val future = MediaController.Builder(context, token).buildAsync()
+        val mainExecutor = Executor { command -> Handler(Looper.getMainLooper()).post(command) }
+        future.addListener({
+            try { player = future.get() } catch (_: Throwable) { player = null }
+        }, mainExecutor)
+        onDispose {
+            MediaController.releaseFuture(future)
+            player = null
+        }
     }
 
     LaunchedEffect(video.id, retryCount) {
@@ -443,29 +450,27 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier, onVideo: (V
         } finally { detailsLoading = false }
     }
 
-    LaunchedEffect(streamUrl) {
+    LaunchedEffect(streamUrl, player) {
         val url = streamUrl ?: return@LaunchedEffect
-        player.setMediaItem(MediaItem.Builder().setUri(url).setMimeType(streamMimeType).build())
-        player.prepare()
-        player.playWhenReady = true
+        val controller = player ?: return@LaunchedEffect
+        controller.setMediaItem(MediaItem.Builder().setUri(url).setMimeType(streamMimeType).build())
+        controller.prepare()
+        controller.playWhenReady = true
     }
 
     LaunchedEffect(player, sponsorSegments) {
+        val controller = player ?: return@LaunchedEffect
         val autoSkip = preferences.autoSkipCategories
         while (true) {
-            val now = player.currentPosition / 1000.0
+            val now = controller.currentPosition / 1000.0
             val segment = sponsorSegments.firstOrNull { it.category in autoSkip && it.uuid !in skippedSegments && now >= it.start && now < it.end }
             if (segment != null) {
                 skippedSegments += segment.uuid
-                player.seekTo((segment.end * 1000).toLong())
+                controller.seekTo((segment.end * 1000).toLong())
                 launch { YouTubeServices.reportSponsorViewed(segment.uuid) }
             }
             kotlinx.coroutines.delay(350)
         }
-    }
-
-    DisposableEffect(player) {
-        onDispose { player.release() }
     }
 
     val view = androidx.compose.ui.platform.LocalView.current
@@ -563,7 +568,7 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier, onVideo: (V
                         listOf(2160, 1440, 1080, 720, 480, 360).forEach { q ->
                             DropdownMenuItem(text = { Text("${q}p") }, onClick = {
                                 maxQuality = q
-                                trackSelector.setParameters(trackSelector.buildUponParameters().setMaxVideoSize(Int.MAX_VALUE, q))
+                                player?.let { controller -> controller.trackSelectionParameters = controller.trackSelectionParameters.buildUpon().setMaxVideoSize(Int.MAX_VALUE, q).build() }
                                 qualityMenu = false
                             })
                         }
