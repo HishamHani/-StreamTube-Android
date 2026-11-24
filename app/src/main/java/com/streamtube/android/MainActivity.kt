@@ -460,6 +460,34 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier, onVideo: (V
         controller.playWhenReady = true
     }
 
+    // Resolve a small related-video queue so Android's media notification can expose Next.
+    LaunchedEffect(player, streamUrl, relatedVideos, detailsLoading) {
+        val controller = player ?: return@LaunchedEffect
+        val currentUrl = streamUrl ?: return@LaunchedEffect
+        if (detailsLoading) return@LaunchedEffect
+        val currentPosition = controller.currentPosition.coerceAtLeast(0L)
+        val queue = mutableListOf(
+            MediaItem.Builder().setUri(currentUrl).setMimeType(streamMimeType)
+                .setMediaMetadata(MediaMetadata.Builder().setTitle(displayTitle).setArtist(video.channel).build())
+                .build()
+        )
+        relatedVideos.distinctBy { it.id }.filter { it.id != video.id }.take(5).forEach { related ->
+            try {
+                val resolved = StreamResolver.resolve(related.id)
+                queue += MediaItem.Builder().setUri(resolved.hlsUrl).setMimeType(resolved.mimeType)
+                    .setMediaMetadata(MediaMetadata.Builder().setTitle(related.title).setArtist(related.channel).build())
+                    .build()
+            } catch (_: Throwable) {
+                // Keep the usable queue entries even if one recommendation cannot be resolved.
+            }
+        }
+        if (queue.size > 1) {
+            controller.setMediaItems(queue, 0, currentPosition)
+            controller.prepare()
+            controller.playWhenReady = true
+        }
+    }
+
     LaunchedEffect(player, sponsorSegments) {
         val controller = player ?: return@LaunchedEffect
         val autoSkip = preferences.autoSkipCategories
