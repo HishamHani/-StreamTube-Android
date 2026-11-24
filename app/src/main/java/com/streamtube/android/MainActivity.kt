@@ -145,10 +145,12 @@ private fun StreamTubeApp() {
             if (selected == null || !playerFullscreen) TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(32.dp).background(AppGold, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Rounded.PlayCircle, contentDescription = null, tint = Color(0xFF10243A), modifier = Modifier.size(24.dp))
-                        }
-                        Text("  Stream Tube", fontWeight = FontWeight.Bold)
+                        androidx.compose.foundation.Image(
+                            painter = painterResource(R.drawable.aureon_mark),
+                            contentDescription = "Aureon emblem",
+                            modifier = Modifier.size(36.dp)
+                        )
+                        Text("  AUREON", fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
                     }
                 },
                 navigationIcon = {
