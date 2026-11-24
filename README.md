@@ -1,6 +1,6 @@
-# StreamTube Android
+# Aureon for Android
 
-Android port of [Stream Tube Desktop](https://github.com/Avaneesh-Inamdar/Stream-Tube-Desktop), the Rust/GPUI native YouTube client.
+Aureon is an Android port of [Stream Tube Desktop](https://github.com/Avaneesh-Inamdar/Stream-Tube-Desktop), the Rust/GPUI native YouTube client.
 
 The Android port keeps the original service/API behavior where practical and replaces desktop-only components (GPUI, libmpv, Windows/Linux file dialogs and process integration) with Android equivalents (Jetpack Compose, Media3 ExoPlayer, SQLite and Android storage).
 
@@ -56,7 +56,7 @@ GitHub Actions builds a debug APK on pushes to main.
 
 1. Open the [Actions page](https://github.com/HishamHani/-StreamTube-Android/actions).
 2. Select a successful Android APK run.
-3. Download the streamtube-android-debug artifact and install the APK.
+3. Download the aureon-android-debug artifact and install the APK.
 
 ## Important notes
 
