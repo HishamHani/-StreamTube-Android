@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
@@ -453,7 +454,8 @@ private fun VideoPlayer(video: Video, modifier: Modifier = Modifier, onVideo: (V
     LaunchedEffect(streamUrl, player) {
         val url = streamUrl ?: return@LaunchedEffect
         val controller = player ?: return@LaunchedEffect
-        controller.setMediaItem(MediaItem.Builder().setUri(url).setMimeType(streamMimeType).build())
+        controller.setMediaItem(MediaItem.Builder().setUri(url).setMimeType(streamMimeType)
+            .setMediaMetadata(MediaMetadata.Builder().setTitle(displayTitle).setArtist(video.channel).build()).build())
         controller.prepare()
         controller.playWhenReady = true
     }
