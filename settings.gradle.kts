@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "StreamTubeAndroid"
+rootProject.name = "Aureon"
 include(":app")
