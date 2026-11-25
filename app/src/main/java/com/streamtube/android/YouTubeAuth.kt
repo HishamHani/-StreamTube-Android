@@ -26,7 +26,7 @@ object YouTubeAuth{
  private const val TV_VERSION="7.20251120.13.00"
  private const val TV_UA="Mozilla/5.0 (ChromiumStylePlatform) Cobalt/25.lts.30.1034943-gold (unlike Gecko), Unknown_TV_Unknown_0/Unknown (Unknown, Unknown)"
  private val http=OkHttpClient.Builder().callTimeout(30,TimeUnit.SECONDS).build()
- private val jsonType="application/json; charset=utf-8".toMediaType()
+ private val formType="application/x-www-form-urlencoded".toMediaType()
 
  private fun prefs(context:Context)=EncryptedSharedPreferences.create(
   context,"youtube_auth",
@@ -45,6 +45,20 @@ object YouTubeAuth{
   context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(login.url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
  }
 
+ private fun postForm(url:String,fields:List<Pair<String,String>>):JSONObject{
+  val body=fields.joinToString("&"){(key,value)->
+   java.net.URLEncoder.encode(key,"UTF-8")+"="+java.net.URLEncoder.encode(value,"UTF-8")
+  }.toRequestBody(formType)
+  val request=Request.Builder().url(url).header("User-Agent",TV_UA).header("Accept","application/json")
+   .post(body).build()
+  http.newCall(request).execute().use{response->
+   val raw=response.body?.string().orEmpty()
+   val json=if(raw.isBlank())JSONObject() else JSONObject(raw)
+   if(!response.isSuccessful && !json.has("error"))error("Google OAuth HTTP ${response.code}: ${raw.take(300)}")
+   return json
+  }
+ }
+
  private fun postJson(url:String,payload:JSONObject,headers:Map<String,String> = emptyMap()):JSONObject{
   val request=Request.Builder().url(url).header("User-Agent",TV_UA).header("Accept","application/json")
    .apply{headers.forEach{(k,v)->header(k,v)}}
@@ -58,12 +72,18 @@ object YouTubeAuth{
  }
 
  suspend fun begin():DeviceLogin=withContext(Dispatchers.IO){
-  val payload=JSONObject().put("client_id",CLIENT_ID).put("scope",SCOPE)
-   .put("device_id",UUID.randomUUID().toString().replace("-","")).put("device_model","ytlr::")
-  val json=postJson("https://www.youtube.com/o/oauth2/device/code",payload)
+  // Google TV / limited-input device OAuth uses form-urlencoded requests at oauth2.googleapis.com.
+  val json=postForm("https://oauth2.googleapis.com/device/code",listOf(
+   "client_id" to CLIENT_ID,
+   "scope" to SCOPE
+  ))
   if(json.has("error"))error(json.optString("error_description",json.optString("error")))
-  DeviceLogin(json.getString("device_code"),json.getString("user_code"),
-   json.optString("verification_url","https://www.google.com/device"),
+  val deviceCode=json.optString("device_code")
+  val userCode=json.optString("user_code")
+  if(deviceCode.isBlank()||userCode.isBlank()){
+   error("Google did not return a device code. Check that the OAuth client is configured as 'TVs and Limited Input devices' and that YouTube Data API access is enabled.")
+  }
+  DeviceLogin(deviceCode,userCode,json.optString("verification_url","https://www.google.com/device"),
    json.optLong("interval",5),json.optLong("expires_in",1800))
  }
 
@@ -72,9 +92,12 @@ object YouTubeAuth{
   val endAt=System.currentTimeMillis()+login.expires*1000
   while(System.currentTimeMillis()<endAt){
    delay(interval*1000)
-   val json=postJson("https://www.youtube.com/o/oauth2/token",JSONObject()
-    .put("client_id",CLIENT_ID).put("client_secret",CLIENT_SECRET).put("code",login.deviceCode)
-    .put("grant_type","http://oauth.net/grant_type/device/1.0"))
+   val json=postForm("https://oauth2.googleapis.com/token",listOf(
+    "client_id" to CLIENT_ID,
+    "client_secret" to CLIENT_SECRET,
+    "device_code" to login.deviceCode,
+    "grant_type" to "urn:ietf:params:oauth:grant-type:device_code"
+   ))
    when(json.optString("error")){
     "authorization_pending"->Unit
     "slow_down"->interval+=5
@@ -104,9 +127,10 @@ object YouTubeAuth{
   val refresh=p.getString("refresh_token",null).orEmpty()
   if(!access.isNullOrBlank()&&System.currentTimeMillis()<p.getLong("expires_at",0))return access
   if(refresh.isBlank())return access
-  val json=postJson("https://www.youtube.com/o/oauth2/token",JSONObject()
-   .put("client_id",CLIENT_ID).put("client_secret",CLIENT_SECRET)
-   .put("refresh_token",refresh).put("grant_type","refresh_token"))
+  val json=postForm("https://oauth2.googleapis.com/token",listOf(
+   "client_id" to CLIENT_ID,"client_secret" to CLIENT_SECRET,
+   "refresh_token" to refresh,"grant_type" to "refresh_token"
+  ))
   val renewed=json.optString("access_token")
   if(renewed.isBlank()){
    if(json.optString("error") in listOf("invalid_grant","unauthorized_client"))signOut(context)
