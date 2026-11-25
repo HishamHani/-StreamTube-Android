@@ -770,7 +770,12 @@ private fun SubscriptionsScreen(modifier: Modifier, signedIn: Boolean, onVideo: 
         loading = true
         error = null
         try { videos = if (signedIn) YouTubeApi.signedInSubscriptions(context).videos else YouTubeApi.localSubscriptions(context) }
-        catch (t: Throwable) { error = t.message ?: "Could not load subscriptions" }
+        catch (t: Throwable) {
+            val message = t.message.orEmpty()
+            error = if (message.contains("HTTP 403") || message.contains("HTTP 401")) {
+                "YouTube needs permission to read your subscriptions. Sign out in Settings, then sign in again and approve the updated access."
+            } else message.ifBlank { "Could not load subscriptions" }
+        }
         finally { loading = false }
     }
     Column(modifier.fillMaxSize()) {
@@ -786,7 +791,7 @@ private fun SubscriptionsScreen(modifier: Modifier, signedIn: Boolean, onVideo: 
                 Button(onClick = { refresh++ }) { Text("Try again") }
             }
             videos.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(if (signedIn) "No subscription videos found." else "No local subscriptions yet. Open a video and tap Subscribe.", color = Color.Gray)
+                Text(if (signedIn) "No uploads found from your subscribed channels yet." else "No local subscriptions yet. Open a video and tap Subscribe.", color = Color.Gray)
             }
             else -> LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(videos) { VideoRow(it, onVideo) }
