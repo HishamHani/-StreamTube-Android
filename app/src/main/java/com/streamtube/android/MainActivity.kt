@@ -233,7 +233,7 @@ private fun StreamTubeApp() {
             Tab.Downloads -> InfoScreen(Modifier.padding(padding), "Downloads",
                 "The download manager is not connected yet. It will be added after search and playback are stable.")
             Tab.Settings -> SettingsScreen(
-                modifier = Modifier.padding(padding), signedIn = signedIn, accountName = accountName, preferences = preferences,
+                modifier = Modifier.padding(padding), signedIn = signedIn, accountName = accountName, preferences = preferences, loginMessage = loginMessage,
                 onPreference = { key, value ->
                     AppPreferences.setBoolean(context, key, value)
                     preferences = when (key) {
@@ -834,7 +834,8 @@ private fun LibraryScreen(modifier: Modifier, onVideo: (Video) -> Unit) {
 @Composable
 private fun SettingsScreen(
     modifier: Modifier, signedIn: Boolean, accountName: String, preferences: StreamTubePreferences,
-    onPreference: (String, Boolean) -> Unit, onSignIn: () -> Unit, onSignOut: () -> Unit, loginBusy: Boolean
+    loginMessage: String?, onPreference: (String, Boolean) -> Unit,
+    onSignIn: () -> Unit, onSignOut: () -> Unit, loginBusy: Boolean
 ) {
     Column(modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text("Settings", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
@@ -847,6 +848,9 @@ private fun SettingsScreen(
                 else Button(onClick = onSignIn, enabled = !loginBusy,
                     shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = AppGold, contentColor = Color(0xFF10243A))) {
                     Text(if (loginBusy) "Starting…" else "Sign in with Google")
+                }
+                loginMessage?.let { message ->
+                    Text(message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
                 Text("Sign-in uses Google's device approval page. Never share your verification code with anyone.",
                     color = Color.Gray, style = MaterialTheme.typography.bodySmall)
