@@ -1,0 +1,51 @@
+name: Build Flow 3.0.5 (Google / YouTube)
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'Flow-3.0.5-google-youtube-integration.zip'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Flow GitHub Debug APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Extract Flow source
+        run: |
+          test -f Flow-3.0.5-google-youtube-integration.zip
+          unzip -q Flow-3.0.5-google-youtube-integration.zip
+          test -f Flow-3.0.5/gradlew
+          chmod +x Flow-3.0.5/gradlew
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+          cache-cleanup: on-success
+
+      - name: Build Flow GitHub debug APK
+        working-directory: Flow-3.0.5
+        run: ./gradlew --no-daemon :app:assembleGithubDebug --stacktrace
+
+      - name: Upload Flow APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: flow-3.0.5-google-youtube-debug
+          path: Flow-3.0.5/app/build/outputs/apk/github/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
