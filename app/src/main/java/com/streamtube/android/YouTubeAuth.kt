@@ -22,7 +22,7 @@ data class YouTubeAccount(val name:String,val handle:String?,val avatar:String?)
 object YouTubeAuth{
  private const val CLIENT_ID="861556708454-d6dlm3lh05idd8npek18k6be8ba3oc68.apps.googleusercontent.com"
  private const val CLIENT_SECRET="SboVhoG9s0rNafixCSGGKXAT"
- private const val SCOPE="http://gdata.youtube.com https://www.googleapis.com/auth/youtube-paid-content"
+ private const val SCOPE="https://www.googleapis.com/auth/youtube.readonly"
  private const val TV_VERSION="7.20251120.13.00"
  private const val TV_UA="Mozilla/5.0 (ChromiumStylePlatform) Cobalt/25.lts.30.1034943-gold (unlike Gecko), Unknown_TV_Unknown_0/Unknown (Unknown, Unknown)"
  private val http=OkHttpClient.Builder().callTimeout(30,TimeUnit.SECONDS).build()
@@ -126,12 +126,29 @@ object YouTubeAuth{
     "X-YouTube-Client-Version" to TV_VERSION,"Origin" to "https://www.youtube.com"))
  }
 
+ suspend fun googleApiGet(context:Context,url:String):JSONObject=withContext(Dispatchers.IO){
+  val token=accessToken(context)?:error("Not signed in. Please reconnect your YouTube account.")
+  val request=Request.Builder().url(url).header("Authorization","Bearer $token")
+   .header("Accept","application/json").header("User-Agent",TV_UA).get().build()
+  http.newCall(request).execute().use{response->
+   val raw=response.body?.string().orEmpty()
+   val json=if(raw.isBlank())JSONObject() else JSONObject(raw)
+   if(!response.isSuccessful){
+    val message=json.optJSONObject("error")?.optString("message").orEmpty()
+    error("YouTube account API HTTP ${response.code}: ${message.ifBlank{"Request failed"}}")
+   }
+   json
+  }
+ }
+
  private suspend fun fetchAccount(context:Context):YouTubeAccount{
-  val response=tvCall(context,"account/accounts_list",JSONObject().put("accountReadMask",JSONObject().put("returnOwner",true)))
-  val item=findObject(response,"accountItem")?:findObject(response,"accountItemRenderer")?:response
-  val name=readText(item.opt("accountName")).ifBlank{"YouTube account"}
-  val handle=readText(item.opt("channelHandle")).ifBlank{null}
-  val avatar=bestThumbnail(item.optJSONObject("accountPhoto"))
+  val response=googleApiGet(context,"https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true")
+  val item=response.optJSONArray("items")?.optJSONObject(0)?:return YouTubeAccount("YouTube account",null,null)
+  val snippet=item.optJSONObject("snippet")
+  val name=snippet?.optString("title").orEmpty().ifBlank{"YouTube account"}
+  val handle=snippet?.optString("customUrl")?.takeIf{it.isNotBlank()}
+  val thumbs=snippet?.optJSONObject("thumbnails")
+  val avatar=listOf("maxres","high","medium","default").firstNotNullOfOrNull{thumbs?.optJSONObject(it)?.optString("url")?.takeIf{url->url.startsWith("http")}}
   return YouTubeAccount(name,handle,avatar)
  }
 
