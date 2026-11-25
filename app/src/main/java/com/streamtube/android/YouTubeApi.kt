@@ -244,7 +244,31 @@ object YouTubeApi{
     }
 
     suspend fun signedInSubscriptions(context:android.content.Context):SearchPage=withContext(Dispatchers.IO){
-        parsePage(YouTubeAuth.tvCall(context,"browse",JSONObject().put("browseId","FEsubscriptions")))
+        // Use the official YouTube Data API to enumerate the signed-in account's subscriptions.
+        // The TV Innertube FEsubscriptions browse response is not consistently shaped like WEB search results.
+        val encoded=URLEncoder.encode("snippet","UTF-8")
+        val subscriptions=YouTubeAuth.googleApiGet(
+            context,
+            "https://www.googleapis.com/youtube/v3/subscriptions?part=$encoded&mine=true&maxResults=50&order=alphabetical"
+        )
+        val items=subscriptions.optJSONArray("items")?:JSONArray()
+        val channels=(0 until items.length()).mapNotNull{index->
+            val snippet=items.optJSONObject(index)?.optJSONObject("snippet")?:return@mapNotNull null
+            val channelId=snippet.optJSONObject("resourceId")?.optString("channelId").orEmpty()
+            if(channelId.isBlank())null else channelId to snippet.optString("title").ifBlank{"YouTube channel"}
+        }.distinctBy{it.first}
+        if(channels.isEmpty()){
+            // Empty subscriptions are a valid result; do not silently show unrelated recommendations.
+            return@withContext SearchPage(emptyList(),null)
+        }
+        val feeds=channels.map{(channelId,channelName)->
+            async(Dispatchers.IO){
+                runCatching{fetchChannelRss(channelId).map{video->
+                    if(video.channel.isBlank())video.copy(channel=channelName) else video
+                }}.getOrDefault(emptyList())
+            }
+        }.flatMap{it.await()}
+        SearchPage(feeds.distinctBy{it.id}.sortedByDescending{it.published},null)
     }
 
     suspend fun likeVideo(context:android.content.Context,videoId:String,kind:String)=withContext(Dispatchers.IO){
