@@ -27,6 +27,7 @@ object YouTubeAuth{
  private const val TV_UA="Mozilla/5.0 (ChromiumStylePlatform) Cobalt/25.lts.30.1034943-gold (unlike Gecko), Unknown_TV_Unknown_0/Unknown (Unknown, Unknown)"
  private val http=OkHttpClient.Builder().callTimeout(30,TimeUnit.SECONDS).build()
  private val formType="application/x-www-form-urlencoded".toMediaType()
+ private val jsonType="application/json; charset=utf-8".toMediaType()
 
  private fun prefs(context:Context)=EncryptedSharedPreferences.create(
   context,"youtube_auth",
